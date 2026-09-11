@@ -8,6 +8,7 @@
 #include <Windows.h>
 
 #include <array>
+#include <charconv>
 #include <cstddef>
 #include <cstdio>
 #include <string_view>
@@ -21,7 +22,7 @@ namespace {
 /** The module-owned configuration file, beside the generated settings and logs. */
 constexpr std::wstring_view kFileSuffix = L"\\player.json";
 /** The document is a few scalars, so one small buffer covers both reading and writing. */
-constexpr std::size_t kFileCapacity = 256;
+constexpr std::size_t kFileCapacity = 384;
 
 SRWLOCK g_lock{SRWLOCK_INIT};
 Settings g_settings{};
@@ -51,15 +52,57 @@ void boolean_for(std::string_view text, std::string_view key, bool& output) noex
     if (at == std::string_view::npos) {
         return;
     }
+
     const std::size_t colon = text.find(':', at + key.size());
     if (colon == std::string_view::npos) {
         return;
     }
+
     std::size_t begin = colon + 1;
     while (begin < text.size() && (text[begin] == ' ' || text[begin] == '\t')) {
         ++begin;
     }
+
     output = text.substr(begin).starts_with("true");
+}
+
+/**
+ * Finds one signed 32-bit integer after a key.
+ * @param text Whole document.
+ * @param key Quoted key to locate.
+ * @param output Receives the value only when it parses cleanly.
+ */
+void integer_for(std::string_view text, std::string_view key, std::int32_t& output) noexcept {
+    const std::size_t at = text.find(key);
+    if (at == std::string_view::npos) {
+        return;
+    }
+
+    const std::size_t colon = text.find(':', at + key.size());
+    if (colon == std::string_view::npos) {
+        return;
+    }
+
+    std::size_t begin = colon + 1;
+    while (begin < text.size() && (text[begin] == ' ' || text[begin] == '\t')) {
+        ++begin;
+    }
+
+    const char* const first = text.data() + begin;
+    const char* const last = text.data() + text.size();
+
+    std::int32_t value = 0;
+    const auto result = std::from_chars(first, last, value);
+
+    if (result.ec != std::errc{}) {
+        return;
+    }
+
+    if (value < kMinimumFieldOfView || value > kMaximumFieldOfView) {
+        return;
+    }
+
+    output = value;
 }
 
 /**
@@ -71,6 +114,8 @@ void boolean_for(std::string_view text, std::string_view key, bool& output) noex
 void parse(std::string_view text, Settings& output) noexcept {
     boolean_for(text, "\"infinite_ammo_enabled\"", output.infiniteAmmoEnabled);
     boolean_for(text, "\"anti_afk_enabled\"", output.antiAfkEnabled);
+    boolean_for(text, "\"field_of_view_override_enabled\"", output.fieldOfViewOverrideEnabled);
+    integer_for(text, "\"field_of_view\"", output.fieldOfView);
 }
 
 /**
@@ -83,16 +128,25 @@ void parse(std::string_view text, Settings& output) noexcept {
     if (!g_pathResolved) {
         return false;
     }
+
     std::array<char, kFileCapacity> document{};
     const int size = std::snprintf(document.data(),
                                    document.size(),
-                                   "{\n  \"infinite_ammo_enabled\": %s,\n"
-                                   "  \"anti_afk_enabled\": %s\n}\n",
+                                   "{\n"
+                                   "  \"infinite_ammo_enabled\": %s,\n"
+                                   "  \"anti_afk_enabled\": %s,\n"
+                                   "  \"field_of_view_override_enabled\": %s,\n"
+                                   "  \"field_of_view\": %d\n"
+                                   "}\n",
                                    settings.infiniteAmmoEnabled ? "true" : "false",
-                                   settings.antiAfkEnabled ? "true" : "false");
+                                   settings.antiAfkEnabled ? "true" : "false",
+                                   settings.fieldOfViewOverrideEnabled ? "true" : "false",
+                                   static_cast<int>(settings.fieldOfView));
+
     if (size <= 0 || static_cast<std::size_t>(size) >= document.size()) {
         return false;
     }
+
     const HANDLE file = CreateFileW(g_path.chars.data(),
                                     GENERIC_WRITE,
                                     0,
@@ -100,13 +154,16 @@ void parse(std::string_view text, Settings& output) noexcept {
                                     CREATE_ALWAYS,
                                     FILE_ATTRIBUTE_NORMAL,
                                     nullptr);
+
     if (file == INVALID_HANDLE_VALUE) {
         return false;
     }
+
     DWORD written = 0;
     bool complete =
         WriteFile(file, document.data(), static_cast<DWORD>(size), &written, nullptr) != FALSE
         && written == static_cast<DWORD>(size);
+
     complete = CloseHandle(file) != FALSE && complete;
     return complete;
 }
@@ -120,18 +177,24 @@ void load() noexcept {
                                     OPEN_EXISTING,
                                     FILE_ATTRIBUTE_NORMAL,
                                     nullptr);
+
     if (file == INVALID_HANDLE_VALUE) {
         return;
     }
+
     std::array<char, kFileCapacity> buffer{};
     DWORD read = 0;
+
     const bool readOk =
         ReadFile(file, buffer.data(), static_cast<DWORD>(buffer.size() - 1), &read, nullptr)
         != FALSE;
+
     (void)CloseHandle(file);
+
     if (!readOk || read == 0) {
         return;
     }
+
     parse(std::string_view(buffer.data(), read), g_settings);
 }
 
@@ -140,23 +203,28 @@ void load() noexcept {
 /** Resolves the configuration file and loads it when one exists. */
 void initialize(void* module) noexcept {
     AcquireSRWLockExclusive(&g_lock);
+
     g_settings = Settings{};
     g_pathResolved =
         core::path::artifact_directory(module, g_path) && core::path::append(g_path, kFileSuffix);
+
     if (g_pathResolved) {
         load();
     } else {
         report_fail("path");
     }
+
     ReleaseSRWLockExclusive(&g_lock);
 }
 
 /** Drops the runtime configuration and the resolved file path. */
 void shutdown() noexcept {
     AcquireSRWLockExclusive(&g_lock);
+
     g_settings = Settings{};
     g_path = core::path::Buffer{};
     g_pathResolved = false;
+
     ReleaseSRWLockExclusive(&g_lock);
 }
 
@@ -165,18 +233,27 @@ Settings get() noexcept {
     AcquireSRWLockShared(&g_lock);
     const Settings snapshot = g_settings;
     ReleaseSRWLockShared(&g_lock);
+
     return snapshot;
 }
 
 /** Publishes one configuration and writes it straight to disk. */
 bool publish(const Settings& settings) noexcept {
+    if (settings.fieldOfView < kMinimumFieldOfView || settings.fieldOfView > kMaximumFieldOfView) {
+        return false;
+    }
+
     AcquireSRWLockExclusive(&g_lock);
+
     g_settings = settings;
     const bool stored = store(settings);
+
     ReleaseSRWLockExclusive(&g_lock);
+
     if (!stored) {
         report_fail("write");
     }
+
     return true;
 }
 

@@ -18,6 +18,7 @@
 #include "../../../state/runtime/runtime.h"
 #include "../../input/window_focus.h"
 #include "../../movement/movement_settings_store.h"
+#include "../../player/player_settings_store.h"
 #include "../polled_input/runtime.h"
 #include "internal.h"
 #include "runtime.h"
@@ -41,6 +42,9 @@ constexpr std::uint32_t kPressFrames = 2;
 /** Authored action driven to wake the body. Forward is the gentlest one that moves it. */
 constexpr std::uint16_t kForwardAction =
     static_cast<std::uint16_t>(state::account::settings::bindings::Action::moveForward);
+
+/** Degrees-to-radians conversion constant for the live FOV override. */
+constexpr float kPi = 3.14159265358979323846F;
 
 std::atomic_bool g_requested{false};
 std::atomic_bool g_forwardValid{false};
@@ -91,6 +95,7 @@ template <typename T> [[nodiscard]] bool read_at(const std::byte* address, T& va
     if (address == nullptr) {
         return false;
     }
+
     SIZE_T read = 0;
     return ReadProcessMemory(GetCurrentProcess(), address, &value, sizeof value, &read) != FALSE
            && read == sizeof value;
@@ -107,10 +112,27 @@ template <typename T> [[nodiscard]] bool read_at(const std::byte* address, T& va
     if (address == nullptr) {
         return false;
     }
+
     SIZE_T written = 0;
     const SIZE_T size = sizeof(float) * kVectorLanes;
     return WriteProcessMemory(GetCurrentProcess(), address, value.data(), size, &written) != FALSE
            && written == size;
+}
+
+/**
+ * Writes one floating-point value into game memory.
+ * @param address Destination address.
+ * @param value Value to store.
+ * @return True when the complete value was written.
+ */
+[[nodiscard]] bool write_float(std::byte* address, float value) noexcept {
+    if (address == nullptr) {
+        return false;
+    }
+
+    SIZE_T written = 0;
+    return WriteProcessMemory(GetCurrentProcess(), address, &value, sizeof value, &written) != FALSE
+           && written == sizeof value;
 }
 
 /**
@@ -121,11 +143,13 @@ template <typename T> [[nodiscard]] bool read_at(const std::byte* address, T& va
 [[nodiscard]] std::byte* body_of(std::byte* component) noexcept {
     std::byte* array = nullptr;
     std::int32_t index = 0;
+
     if (!read_at(component + kPhysicsComponentBodyArray, array)
         || !read_at(component + kPhysicsComponentBodyIndex, index) || array == nullptr
         || index < 0) {
         return nullptr;
     }
+
     std::byte* body = nullptr;
     const std::size_t offset = kBodyEntryStride * static_cast<std::size_t>(index) + kBodyPointer;
     return read_at(array + offset, body) ? body : nullptr;
@@ -139,6 +163,7 @@ void expire_request() noexcept {
     if (!g_requested.load(std::memory_order_acquire)) {
         return;
     }
+
     if (g_requestAge.fetch_add(1, std::memory_order_relaxed) + 1 >= kRequestLifetimeFrames) {
         g_requested.store(false, std::memory_order_release);
     }
@@ -162,14 +187,18 @@ void report_skip(const char* reason) noexcept;
 void begin_press() noexcept {
     const state::AccountState account = state::account_snapshot();
     const auto& binding = account.settings.keyBindings.values[kForwardAction];
+
     if (!binding.primary.has_value()) {
         return;
     }
+
     const std::uint32_t virtualKey = action_key(*binding.primary);
+
     if (virtualKey == 0) {
         report_skip("no_key");
         return;
     }
+
     hooks::polled_input::hold_key(virtualKey);
     g_pressFrames.store(kPressFrames, std::memory_order_release);
 }
@@ -179,6 +208,7 @@ void end_press() noexcept {
     if (g_pressFrames.load(std::memory_order_acquire) == 0) {
         return;
     }
+
     if (g_pressFrames.fetch_sub(1, std::memory_order_acq_rel) <= 1) {
         hooks::polled_input::release_key();
     }
@@ -191,9 +221,11 @@ void end_press() noexcept {
 [[nodiscard]] bool owns_player(std::byte* component) noexcept {
     std::uint32_t controlled = kInvalidHandle;
     g_controlledHandle(&controlled);
+
     if (controlled == kInvalidHandle) {
         return false;
     }
+
     std::uint16_t owner = 0;
     return read_at(component + kPhysicsComponentObjectHandle, owner)
            && (controlled & kHandleIndexMask)
@@ -205,6 +237,7 @@ void report_skip(const char* reason) noexcept {
     std::array<char, 96> line{};
     const int written = std::snprintf(
         line.data(), line.size(), "ev=teleport stage=move result=skip reason=%s", reason);
+
     if (written > 0) {
         core::log::write(core::log::Channel::client,
                          core::log::Level::warn,
@@ -219,9 +252,11 @@ void report_skip(const char* reason) noexcept {
  */
 void set_vertical_velocity(std::byte* body, float value) noexcept {
     std::array<float, kVectorLanes> velocity{};
+
     if (!read_at(body + kBodyVelocityX, velocity)) {
         return;
     }
+
     velocity[kVerticalLane] = value;
     (void)write_vector(body + kBodyVelocityX, velocity);
 }
@@ -241,9 +276,11 @@ void set_vertical_velocity(std::byte* body, float value) noexcept {
     if (!read_at(address, before)) {
         return false;
     }
+
     for (std::size_t lane = 0; lane < kVectorLanes; ++lane) {
         after[lane] = before[lane] + delta[lane];
     }
+
     return write_vector(address, after);
 }
 
@@ -260,16 +297,21 @@ void set_vertical_velocity(std::byte* body, float value) noexcept {
 [[nodiscard]] bool move_body(std::byte* body, float distance) noexcept {
     Vector forward{};
     copy_forward(forward);
+
     std::array<float, kVectorLanes> delta{};
+
     for (std::size_t lane = 0; lane < kVectorLanes; ++lane) {
         delta[lane] = forward[lane] * distance;
     }
+
     std::array<float, kVectorLanes> position{};
     std::array<float, kVectorLanes> moved{};
+
     if (!offset_vector(body + kBodyPositionX, delta, position, moved)) {
         report_skip("body");
         return false;
     }
+
     std::array<char, 160> line{};
     const int written = std::snprintf(line.data(),
                                       line.size(),
@@ -282,11 +324,13 @@ void set_vertical_velocity(std::byte* body, float value) noexcept {
                                       static_cast<double>(moved[0]),
                                       static_cast<double>(moved[1]),
                                       static_cast<double>(moved[2]));
+
     if (written > 0) {
         core::log::write(core::log::Channel::client,
                          core::log::Level::info,
                          {line.data(), static_cast<std::size_t>(written)});
     }
+
     return true;
 }
 
@@ -297,14 +341,18 @@ void set_vertical_velocity(std::byte* body, float value) noexcept {
  */
 [[nodiscard]] bool perform_move(std::byte* component) noexcept {
     std::byte* const body = body_of(component);
+
     if (body == nullptr) {
         report_skip("no_body");
         return false;
     }
+
     set_vertical_velocity(body, 0.0F);
+
     if (!move_body(body, client::movement::get().distance)) {
         return false;
     }
+
     begin_press();
     return true;
 }
@@ -322,7 +370,7 @@ void clear_targets() noexcept {
     g_controlledHandle = nullptr;
     g_cameraSingleton = nullptr;
     g_requested.store(false, std::memory_order_release);
-    g_forwardValid.store(false, std::memory_order_release);
+    g_forwardValid.store(false, std::memory_order_relaxed);
     g_keyDown.store(false, std::memory_order_relaxed);
     g_requestAge.store(0, std::memory_order_relaxed);
     g_active.store(false, std::memory_order_relaxed);
@@ -336,13 +384,26 @@ void capture_camera_pose(std::uint32_t playerIndex) noexcept {
         invalidate_camera_pose();
         return;
     }
+
     std::byte* const camera = g_cameraSingleton();
+
     if (camera == nullptr) {
         invalidate_camera_pose();
         return;
     }
+
     const std::size_t playerOffset = kCameraBlockStride * playerIndex;
+
+    const client::player::Settings playerSettings = client::player::get();
+
+    if (playerSettings.fieldOfViewOverrideEnabled) {
+        const float radians = static_cast<float>(playerSettings.fieldOfView) * (kPi / 180.0F);
+
+        (void)write_float(camera + playerOffset + kCameraHorizontalFov, radians);
+    }
+
     CameraPose pose{};
+
     if (!read_at(camera + playerOffset + kCameraPositionX, pose.position)
         || !read_at(camera + playerOffset + kCameraForwardX, pose.forward)
         || !read_at(camera + playerOffset + kCameraUpX, pose.up)
@@ -351,11 +412,13 @@ void capture_camera_pose(std::uint32_t playerIndex) noexcept {
         invalidate_camera_pose();
         return;
     }
+
     AcquireSRWLockExclusive(&g_cameraPoseLock);
     g_cameraPose = pose;
     g_cameraPoseValid = true;
     g_forward = pose.forward;
     ReleaseSRWLockExclusive(&g_cameraPoseLock);
+
     g_forwardValid.store(true, std::memory_order_release);
 }
 
@@ -363,25 +426,32 @@ void capture_camera_pose(std::uint32_t playerIndex) noexcept {
 void poll_request() noexcept {
     end_press();
     expire_request();
+
     const client::movement::Settings settings = client::movement::get();
     const bool usable = settings.enabled && settings.virtualKey != client::movement::kNoKey;
+
     g_active.store(usable, std::memory_order_relaxed);
+
     if (!usable) {
         g_keyDown.store(false, std::memory_order_relaxed);
         return;
     }
+
     // An open interface owns the keyboard, so the key that binds the teleport must not fire it.
     if (core::ui::runtime::snapshot().visible) {
         g_keyDown.store(false, std::memory_order_relaxed);
         return;
     }
+
     const bool down = client::input::game_focused()
                       && (GetAsyncKeyState(static_cast<int>(settings.virtualKey)) & 0x8000) != 0;
+
     if (down && !g_keyDown.exchange(down, std::memory_order_relaxed)) {
         g_requestAge.store(0, std::memory_order_relaxed);
         g_requested.store(true, std::memory_order_release);
         return;
     }
+
     g_keyDown.store(down, std::memory_order_relaxed);
 }
 
@@ -391,20 +461,26 @@ void apply_pending(void* component) noexcept {
         || g_controlledHandle == nullptr) {
         return;
     }
+
     const bool requested = g_requested.load(std::memory_order_acquire);
+
     // The ownership test runs per component, so it is paid only while a request is open or until
     // the player's component is known. Once it is known, an ordinary tick costs two atomic reads.
     if (!requested && g_playerComponent.load(std::memory_order_relaxed) != nullptr) {
         return;
     }
+
     if (!owns_player(static_cast<std::byte*>(component))) {
         return;
     }
+
     std::byte* const physics = static_cast<std::byte*>(component);
     g_playerComponent.store(physics, std::memory_order_relaxed);
+
     if (!requested || !g_forwardValid.load(std::memory_order_acquire)) {
         return;
     }
+
     g_requested.store(false, std::memory_order_release);
     (void)perform_move(physics);
 }
@@ -416,16 +492,22 @@ void force_pending() noexcept {
         || g_requestAge.load(std::memory_order_relaxed) < kForceAfterFrames) {
         return;
     }
+
     std::byte* const physics = g_playerComponent.load(std::memory_order_relaxed);
+
     // The cached pointer outlives a destination change, so it is proved again before use.
     if (physics == nullptr || g_controlledHandle == nullptr || !owns_player(physics)) {
         return;
     }
+
     g_requested.store(false, std::memory_order_release);
+
     if (!perform_move(physics)) {
         return;
     }
+
     invoke_sync(physics);
+
     core::log::write(
         core::log::Channel::client, core::log::Level::info, "ev=teleport stage=force result=ok");
 }
@@ -446,6 +528,7 @@ bool read_position(void* component, Vector& position) noexcept {
     if (component == nullptr) {
         return false;
     }
+
     std::byte* const body = body_of(static_cast<std::byte*>(component));
     return body != nullptr && read_at(body + kBodyPositionX, position);
 }
@@ -455,6 +538,7 @@ bool write_velocity(void* component, const Vector& velocity) noexcept {
     if (component == nullptr) {
         return false;
     }
+
     std::byte* const body = body_of(static_cast<std::byte*>(component));
     return body != nullptr && write_vector(body + kBodyVelocityX, velocity);
 }
@@ -464,6 +548,7 @@ bool camera_forward(Vector& forward) noexcept {
     if (!g_forwardValid.load(std::memory_order_acquire)) {
         return false;
     }
+
     copy_forward(forward);
     return true;
 }
@@ -471,9 +556,12 @@ bool camera_forward(Vector& forward) noexcept {
 /** Copies the last complete pose published by the camera-frame hook. */
 bool camera_pose(CameraPose& pose) noexcept {
     AcquireSRWLockShared(&g_cameraPoseLock);
+
     const bool valid = g_cameraPoseValid;
     pose = valid ? g_cameraPose : CameraPose{};
+
     ReleaseSRWLockShared(&g_cameraPoseLock);
+
     return valid;
 }
 

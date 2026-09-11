@@ -1,12 +1,26 @@
 #pragma once
 
+#include <cstdint>
+
 namespace sunrise::client::player {
+
+/** Lowest FOV accepted by the target client. */
+inline constexpr std::int32_t kMinimumFieldOfView = 55;
+/** Highest FOV accepted by the target client. */
+inline constexpr std::int32_t kMaximumFieldOfView = 150;
+/** Neutral starting value used until the user picks one. */
+inline constexpr std::int32_t kDefaultFieldOfView = 85;
 
 /** Runtime player configuration. This module owns it; Core settings do not carry it. */
 struct Settings {
     bool infiniteAmmoEnabled{false};
     /** Holds every activity inactivity timeout at its longest. */
     bool antiAfkEnabled{false};
+
+    /** When true, the camera hook applies fieldOfView every frame. */
+    bool fieldOfViewOverrideEnabled{false};
+    /** Horizontal field of view in degrees. */
+    std::int32_t fieldOfView{kDefaultFieldOfView};
 };
 
 /**
