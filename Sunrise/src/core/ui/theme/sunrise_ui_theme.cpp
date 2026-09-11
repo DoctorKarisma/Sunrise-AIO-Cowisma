@@ -1,6 +1,7 @@
 #include "sunrise_ui_theme.h"
 
 #include <algorithm>
+#include <cmath>
 #include <imgui.h>
 
 #include "../scaling/dpi/ui_dpi_scaling.h"
@@ -58,6 +59,24 @@ constexpr ImVec4 kTransparent{};
 
 } // namespace
 
+/** @return The current color in the slow animated RGB border cycle. */
+ImVec4 animated_border_color() noexcept {
+    /** One complete RGB cycle every 20 seconds. */
+    constexpr float kCyclesPerSecond = 0.05F;
+    constexpr float kSaturation = 0.85F;
+    constexpr float kBrightness = 1.0F;
+
+    const float hue = std::fmod(static_cast<float>(ImGui::GetTime()) * kCyclesPerSecond, 1.0F);
+
+    float red = 0.0F;
+    float green = 0.0F;
+    float blue = 0.0F;
+
+    ImGui::ColorConvertHSVtoRGB(hue, kSaturation, kBrightness, red, green, blue);
+
+    return {red, green, blue, 1.0F};
+}
+
 /** Applies the Sunrise colors and a fresh DPI-scaled copy of every authored size. */
 void apply() noexcept {
     const float fontSizeBase = ImGui::GetStyle().FontSizeBase;
@@ -112,6 +131,7 @@ void apply() noexcept {
     colors[ImGuiCol_ResizeGripActive] = kAccentHovered;
     colors[ImGuiCol_TextSelectedBg] = kSelection;
     colors[ImGuiCol_NavCursor] = kAccent;
+
     // Dear ImGui defaults these to its own blue, which is the only non-Sunrise colour left on a
     // page built from tab bars and tables.
     colors[ImGuiCol_Tab] = kTab;
@@ -133,11 +153,13 @@ void apply() noexcept {
     // Scaling a fresh default style stops repeated monitor changes from building up error.
     const float scale = scaling::dpi::current();
     style.ScaleAllSizes(scale);
+
     // ScaleAllSizes truncates this one to a whole number, so any factor below 1 zeroes it and the
     // cursor draws with no area. Held at 1 instead, which is the size it is authored at.
     style.MouseCursorScale = (std::max)(1.0F, style.MouseCursorScale);
     style.FontSizeBase = fontSizeBase;
     style.FontScaleMain = scale;
+
     ImGui::GetStyle() = style;
 }
 
