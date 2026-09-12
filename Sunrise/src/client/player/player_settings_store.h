@@ -11,16 +11,37 @@ inline constexpr std::int32_t kMaximumFieldOfView = 150;
 /** Neutral starting value used until the user picks one. */
 inline constexpr std::int32_t kDefaultFieldOfView = 85;
 
+/** Smallest player scale exposed by the interface. */
+inline constexpr float kMinimumPlayerScale = 0.25F;
+/** Largest player scale exposed by the interface. */
+inline constexpr float kMaximumPlayerScale = 10.0F;
+/** Normal Destiny player scale. */
+inline constexpr float kDefaultPlayerScale = 1.0F;
+
 /** Runtime player configuration. This module owns it; Core settings do not carry it. */
 struct Settings {
     bool infiniteAmmoEnabled{false};
+
     /** Holds every activity inactivity timeout at its longest. */
     bool antiAfkEnabled{false};
 
     /** When true, the camera hook applies fieldOfView every frame. */
     bool fieldOfViewOverrideEnabled{false};
+
     /** Horizontal field of view in degrees. */
     std::int32_t fieldOfView{kDefaultFieldOfView};
+
+    /** Experimental uniform-scale override for the local player object. */
+    bool playerScaleEnabled{false};
+
+    /** 1.0 is the game's normal player size. */
+    float playerScale{kDefaultPlayerScale};
+
+    /** Prevents the turnback/out-of-bounds check from reporting the player outside the area. */
+    bool noTurnbackEnabled{false};
+
+    /** Prevents the normal damage instruction from reducing player health. */
+    bool godmodeEnabled{false};
 };
 
 /**

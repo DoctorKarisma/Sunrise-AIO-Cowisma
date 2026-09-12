@@ -97,24 +97,27 @@ template <typename T> [[nodiscard]] bool read_at(const std::byte* address, T& va
     }
 
     SIZE_T read = 0;
+
     return ReadProcessMemory(GetCurrentProcess(), address, &value, sizeof value, &read) != FALSE
            && read == sizeof value;
 }
 
 /**
- * Writes one vector into game memory. The call applies page protection itself.
+ * Writes one vector into game memory.
  * @param address Destination address.
  * @param value Three lanes to store.
  * @return True when Windows copied the whole vector.
  */
 [[nodiscard]] bool write_vector(std::byte* address,
                                 const std::array<float, kVectorLanes>& value) noexcept {
+
     if (address == nullptr) {
         return false;
     }
 
     SIZE_T written = 0;
     const SIZE_T size = sizeof(float) * kVectorLanes;
+
     return WriteProcessMemory(GetCurrentProcess(), address, value.data(), size, &written) != FALSE
            && written == size;
 }
@@ -131,6 +134,7 @@ template <typename T> [[nodiscard]] bool read_at(const std::byte* address, T& va
     }
 
     SIZE_T written = 0;
+
     return WriteProcessMemory(GetCurrentProcess(), address, &value, sizeof value, &written) != FALSE
            && written == sizeof value;
 }
@@ -151,13 +155,14 @@ template <typename T> [[nodiscard]] bool read_at(const std::byte* address, T& va
     }
 
     std::byte* body = nullptr;
+
     const std::size_t offset = kBodyEntryStride * static_cast<std::size_t>(index) + kBodyPointer;
+
     return read_at(array + offset, body) ? body : nullptr;
 }
 
 /**
- * Ages a pending request and drops it once nothing has taken it. A press is meant for the moment
- * it is made, so one that finds no player physics tick is dropped, not held for the next one.
+ * Ages a pending request and drops it once nothing has taken it.
  */
 void expire_request() noexcept {
     if (!g_requested.load(std::memory_order_acquire)) {
@@ -171,8 +176,6 @@ void expire_request() noexcept {
 
 /**
  * Runs the whole move for a component already proved to be the player's.
- * @param component Physics component driving the player.
- * @return True when the body was found and its position was written.
  */
 [[nodiscard]] bool perform_move(std::byte* component) noexcept;
 
@@ -181,11 +184,10 @@ void report_skip(const char* reason) noexcept;
 
 /**
  * Starts the injected press that wakes the body.
- * Nothing reads the new body position until something integrates it. So the move drives the
- * player's own forward action, instead of writing what that action would have produced.
  */
 void begin_press() noexcept {
     const state::AccountState account = state::account_snapshot();
+
     const auto& binding = account.settings.keyBindings.values[kForwardAction];
 
     if (!binding.primary.has_value()) {
@@ -200,6 +202,7 @@ void begin_press() noexcept {
     }
 
     hooks::polled_input::hold_key(virtualKey);
+
     g_pressFrames.store(kPressFrames, std::memory_order_release);
 }
 
@@ -219,7 +222,12 @@ void end_press() noexcept {
  * @return True when it drives the object the local player controls.
  */
 [[nodiscard]] bool owns_player(std::byte* component) noexcept {
+    if (component == nullptr || g_controlledHandle == nullptr) {
+        return false;
+    }
+
     std::uint32_t controlled = kInvalidHandle;
+
     g_controlledHandle(&controlled);
 
     if (controlled == kInvalidHandle) {
@@ -227,6 +235,7 @@ void end_press() noexcept {
     }
 
     std::uint16_t owner = 0;
+
     return read_at(component + kPhysicsComponentObjectHandle, owner)
            && (controlled & kHandleIndexMask)
                   == (static_cast<std::uint32_t>(owner) & kHandleIndexMask);
@@ -235,6 +244,7 @@ void end_press() noexcept {
 /** @param reason Key naming the step that stopped the move. */
 void report_skip(const char* reason) noexcept {
     std::array<char, 96> line{};
+
     const int written = std::snprintf(
         line.data(), line.size(), "ev=teleport stage=move result=skip reason=%s", reason);
 
@@ -247,10 +257,9 @@ void report_skip(const char* reason) noexcept {
 
 /**
  * Writes one vertical velocity, leaving run momentum on the other two lanes.
- * @param body Rigid body to write.
- * @param value Vertical velocity to store.
  */
 void set_vertical_velocity(std::byte* body, float value) noexcept {
+
     std::array<float, kVectorLanes> velocity{};
 
     if (!read_at(body + kBodyVelocityX, velocity)) {
@@ -258,21 +267,18 @@ void set_vertical_velocity(std::byte* body, float value) noexcept {
     }
 
     velocity[kVerticalLane] = value;
+
     (void)write_vector(body + kBodyVelocityX, velocity);
 }
 
 /**
  * Adds one world delta to a stored position.
- * @param address Vector to move.
- * @param delta World units per lane.
- * @param before Receives the value read.
- * @param after Receives the value written.
- * @return True when the new value was stored.
  */
 [[nodiscard]] bool offset_vector(std::byte* address,
                                  const std::array<float, kVectorLanes>& delta,
                                  std::array<float, kVectorLanes>& before,
                                  std::array<float, kVectorLanes>& after) noexcept {
+
     if (!read_at(address, before)) {
         return false;
     }
@@ -286,15 +292,9 @@ void set_vertical_velocity(std::byte* body, float value) noexcept {
 
 /**
  * Adds the configured distance along the published forward vector.
- *
- * Only the rigid body is written. The physics component's own vector is composed against the body
- * orientation rather than added to it, so a world delta applied there corrupts the transform.
- *
- * @param body Rigid body being moved.
- * @param distance World units to travel.
- * @return True when the new position was stored.
  */
 [[nodiscard]] bool move_body(std::byte* body, float distance) noexcept {
+
     Vector forward{};
     copy_forward(forward);
 
@@ -313,6 +313,7 @@ void set_vertical_velocity(std::byte* body, float value) noexcept {
     }
 
     std::array<char, 160> line{};
+
     const int written = std::snprintf(line.data(),
                                       line.size(),
                                       "ev=teleport stage=move result=ok dist=%.1f "
@@ -336,10 +337,9 @@ void set_vertical_velocity(std::byte* body, float value) noexcept {
 
 /**
  * Runs the whole move for a component already proved to be the player's.
- * @param component Physics component driving the player.
- * @return True when the body was found and its position was written.
  */
 [[nodiscard]] bool perform_move(std::byte* component) noexcept {
+
     std::byte* const body = body_of(component);
 
     if (body == nullptr) {
@@ -354,6 +354,7 @@ void set_vertical_velocity(std::byte* body, float value) noexcept {
     }
 
     begin_press();
+
     return true;
 }
 
@@ -361,6 +362,7 @@ void set_vertical_velocity(std::byte* body, float value) noexcept {
 
 /** Publishes the two functions the hooks call. */
 void publish_targets(ControlledHandle controlled, CameraSingleton singleton) noexcept {
+
     g_controlledHandle = controlled;
     g_cameraSingleton = singleton;
 }
@@ -369,18 +371,24 @@ void publish_targets(ControlledHandle controlled, CameraSingleton singleton) noe
 void clear_targets() noexcept {
     g_controlledHandle = nullptr;
     g_cameraSingleton = nullptr;
+
     g_requested.store(false, std::memory_order_release);
     g_forwardValid.store(false, std::memory_order_relaxed);
     g_keyDown.store(false, std::memory_order_relaxed);
     g_requestAge.store(0, std::memory_order_relaxed);
     g_active.store(false, std::memory_order_relaxed);
     g_playerComponent.store(nullptr, std::memory_order_relaxed);
+
     invalidate_camera_pose();
 }
 
 /** Publishes the frame's complete camera pose and its forward vector. */
 void capture_camera_pose(std::uint32_t playerIndex) noexcept {
+
     if (playerIndex == kInvalidHandle || g_cameraSingleton == nullptr) {
+
+        g_playerComponent.store(nullptr, std::memory_order_relaxed);
+
         invalidate_camera_pose();
         return;
     }
@@ -388,6 +396,8 @@ void capture_camera_pose(std::uint32_t playerIndex) noexcept {
     std::byte* const camera = g_cameraSingleton();
 
     if (camera == nullptr) {
+        g_playerComponent.store(nullptr, std::memory_order_relaxed);
+
         invalidate_camera_pose();
         return;
     }
@@ -409,14 +419,17 @@ void capture_camera_pose(std::uint32_t playerIndex) noexcept {
         || !read_at(camera + playerOffset + kCameraUpX, pose.up)
         || !read_at(camera + playerOffset + kCameraHorizontalFov, pose.horizontalFov)
         || !read_at(camera + playerOffset + kCameraAspect, pose.aspect)) {
+
         invalidate_camera_pose();
         return;
     }
 
     AcquireSRWLockExclusive(&g_cameraPoseLock);
+
     g_cameraPose = pose;
     g_cameraPoseValid = true;
     g_forward = pose.forward;
+
     ReleaseSRWLockExclusive(&g_cameraPoseLock);
 
     g_forwardValid.store(true, std::memory_order_release);
@@ -428,6 +441,7 @@ void poll_request() noexcept {
     expire_request();
 
     const client::movement::Settings settings = client::movement::get();
+
     const bool usable = settings.enabled && settings.virtualKey != client::movement::kNoKey;
 
     g_active.store(usable, std::memory_order_relaxed);
@@ -437,7 +451,6 @@ void poll_request() noexcept {
         return;
     }
 
-    // An open interface owns the keyboard, so the key that binds the teleport must not fire it.
     if (core::ui::runtime::snapshot().visible) {
         g_keyDown.store(false, std::memory_order_relaxed);
         return;
@@ -447,42 +460,62 @@ void poll_request() noexcept {
                       && (GetAsyncKeyState(static_cast<int>(settings.virtualKey)) & 0x8000) != 0;
 
     if (down && !g_keyDown.exchange(down, std::memory_order_relaxed)) {
+
         g_requestAge.store(0, std::memory_order_relaxed);
+
         g_requested.store(true, std::memory_order_release);
+
         return;
     }
 
     g_keyDown.store(down, std::memory_order_relaxed);
 }
 
-/** Moves the local player if a request is pending and this component owns them. */
+/**
+ * Observes the player's physics component even when Teleport itself is disabled.
+ */
 void apply_pending(void* component) noexcept {
-    if (!g_active.load(std::memory_order_relaxed) || component == nullptr
-        || g_controlledHandle == nullptr) {
+    if (component == nullptr || g_controlledHandle == nullptr) {
+        return;
+    }
+
+    std::byte* const physics = static_cast<std::byte*>(component);
+
+    std::byte* cached = g_playerComponent.load(std::memory_order_relaxed);
+
+    if (cached == nullptr) {
+        if (!owns_player(physics)) {
+            return;
+        }
+
+        g_playerComponent.store(physics, std::memory_order_relaxed);
+
+        cached = physics;
+    }
+
+    if (!g_active.load(std::memory_order_relaxed)) {
         return;
     }
 
     const bool requested = g_requested.load(std::memory_order_acquire);
 
-    // The ownership test runs per component, so it is paid only while a request is open or until
-    // the player's component is known. Once it is known, an ordinary tick costs two atomic reads.
-    if (!requested && g_playerComponent.load(std::memory_order_relaxed) != nullptr) {
-        return;
-    }
+    if (cached != physics) {
+        if (!requested || !owns_player(physics)) {
+            return;
+        }
 
-    if (!owns_player(static_cast<std::byte*>(component))) {
-        return;
-    }
+        g_playerComponent.store(physics, std::memory_order_relaxed);
 
-    std::byte* const physics = static_cast<std::byte*>(component);
-    g_playerComponent.store(physics, std::memory_order_relaxed);
+        cached = physics;
+    }
 
     if (!requested || !g_forwardValid.load(std::memory_order_acquire)) {
         return;
     }
 
     g_requested.store(false, std::memory_order_release);
-    (void)perform_move(physics);
+
+    (void)perform_move(cached);
 }
 
 /** Runs the move for a request no physics tick collected. */
@@ -495,7 +528,6 @@ void force_pending() noexcept {
 
     std::byte* const physics = g_playerComponent.load(std::memory_order_relaxed);
 
-    // The cached pointer outlives a destination change, so it is proved again before use.
     if (physics == nullptr || g_controlledHandle == nullptr || !owns_player(physics)) {
         return;
     }
@@ -517,29 +549,71 @@ void* local_player_component() noexcept {
     return g_playerComponent.load(std::memory_order_relaxed);
 }
 
-/** @param component Candidate physics component. @return True when the local player drives it. */
+/** Reports the complete datum handle of the object the local player controls. */
+std::uint32_t local_player_handle() noexcept {
+    if (g_controlledHandle == nullptr) {
+        return kInvalidHandle;
+    }
+
+    std::uint32_t controlled = kInvalidHandle;
+
+    g_controlledHandle(&controlled);
+
+    return controlled;
+}
+
+/** @return True when the local player drives the candidate component. */
 bool owns_local_player(void* component) noexcept {
+
     return component != nullptr && g_controlledHandle != nullptr
            && owns_player(static_cast<std::byte*>(component));
 }
 
 /** Reads the world position of the body a physics component drives. */
 bool read_position(void* component, Vector& position) noexcept {
+
     if (component == nullptr) {
         return false;
     }
 
     std::byte* const body = body_of(static_cast<std::byte*>(component));
+
     return body != nullptr && read_at(body + kBodyPositionX, position);
+}
+
+/** Writes the world position of the body a physics component drives. */
+bool write_position(void* component, const Vector& position) noexcept {
+
+    if (component == nullptr) {
+        return false;
+    }
+
+    std::byte* const body = body_of(static_cast<std::byte*>(component));
+
+    return body != nullptr && write_vector(body + kBodyPositionX, position);
+}
+
+/** Reads the linear velocity of the body a physics component drives. */
+bool read_velocity(void* component, Vector& velocity) noexcept {
+
+    if (component == nullptr) {
+        return false;
+    }
+
+    std::byte* const body = body_of(static_cast<std::byte*>(component));
+
+    return body != nullptr && read_at(body + kBodyVelocityX, velocity);
 }
 
 /** Writes the linear velocity of the body a physics component drives. */
 bool write_velocity(void* component, const Vector& velocity) noexcept {
+
     if (component == nullptr) {
         return false;
     }
 
     std::byte* const body = body_of(static_cast<std::byte*>(component));
+
     return body != nullptr && write_vector(body + kBodyVelocityX, velocity);
 }
 
@@ -558,6 +632,7 @@ bool camera_pose(CameraPose& pose) noexcept {
     AcquireSRWLockShared(&g_cameraPoseLock);
 
     const bool valid = g_cameraPoseValid;
+
     pose = valid ? g_cameraPose : CameraPose{};
 
     ReleaseSRWLockShared(&g_cameraPoseLock);

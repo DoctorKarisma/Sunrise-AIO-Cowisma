@@ -79,7 +79,7 @@ void clear_action_keys() noexcept;
 void invoke_sync(void* component) noexcept;
 
 /**
- * Moves the local player if a request is pending and this component owns them.
+ * Observes the local player's physics component and applies a pending teleport when requested.
  * @param component Physics component about to be synced.
  */
 void apply_pending(void* component) noexcept;
@@ -87,9 +87,6 @@ void apply_pending(void* component) noexcept;
 /**
  * @param component Candidate physics component.
  * @return True when it drives the object the local player controls.
- *
- * Exposed because the physics sync is the only tick that sees every component. A feature acting
- * on the player's own tick needs the same test this module already runs.
  */
 [[nodiscard]] bool owns_local_player(void* component) noexcept;
 
@@ -102,11 +99,20 @@ void apply_pending(void* component) noexcept;
 [[nodiscard]] bool read_position(void* component, Vector& position) noexcept;
 
 /**
- * Reports the physics component the local player was last seen driving.
- * The sync stops for a player at rest, so a frame poll has no other way back to them.
- * @return That component, or null before the player has been seen. Prove it before use.
+ * Writes the world position of the body a physics component drives.
+ * @param component Physics component.
+ * @param position Three world-space lanes to store.
+ * @return True when the body was found and written.
  */
-[[nodiscard]] void* local_player_component() noexcept;
+[[nodiscard]] bool write_position(void* component, const Vector& position) noexcept;
+
+/**
+ * Reads the linear velocity of the body a physics component drives.
+ * @param component Physics component.
+ * @param velocity Receives the three lanes.
+ * @return True when the body was found and read.
+ */
+[[nodiscard]] bool read_velocity(void* component, Vector& velocity) noexcept;
 
 /**
  * Writes the linear velocity of the body a physics component drives.
@@ -115,6 +121,19 @@ void apply_pending(void* component) noexcept;
  * @return True when the body was found and written.
  */
 [[nodiscard]] bool write_velocity(void* component, const Vector& velocity) noexcept;
+
+/**
+ * Reports the physics component the local player was last seen driving.
+ * The sync stops for a player at rest, so a frame poll has no other way back to them.
+ * @return That component, or null before the player has been seen.
+ */
+[[nodiscard]] void* local_player_component() noexcept;
+
+/**
+ * Reports the complete datum handle of the object controlled by the local player.
+ * @return Full controlled-object handle, or 0xFFFFFFFF when unavailable.
+ */
+[[nodiscard]] std::uint32_t local_player_handle() noexcept;
 
 /**
  * The camera hook is the only site that sees the pose block, so it publishes the vector here.

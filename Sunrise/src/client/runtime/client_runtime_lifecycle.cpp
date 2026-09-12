@@ -13,12 +13,14 @@
 #include "../hooks/cine_probe/cine_probe.h"
 #include "../hooks/config_getter/config_getter_lifecycle.h"
 #include "../hooks/cursor/runtime.h"
+#include "../hooks/godmode/godmode.h"
 #include "../hooks/graphics/graphics_hook_lifecycle.h"
 #include "../hooks/hitch_probe/hitch_probe.h"
 #include "../hooks/inactivity/inactivity_override.h"
 #include "../hooks/infinite_ammo/infinite_ammo.h"
 #include "../hooks/membership_probe/membership_probe.h"
 #include "../hooks/network/runtime.h"
+#include "../hooks/no_turnback/no_turnback.h"
 #include "../hooks/noclip/runtime.h"
 #include "../hooks/package_trust/package_trust_bypass.h"
 #include "../hooks/polled_input/runtime.h"
@@ -138,6 +140,8 @@ bool shutdown() noexcept {
     }
     hooks::bitmap::uninstall();
     hooks::bootflow::uninstall();
+    hooks::godmode::uninstall();
+    hooks::no_turnback::uninstall();
     hooks::infinite_ammo::uninstall();
     hooks::inactivity::uninstall();
     hooks::noclip::uninstall();

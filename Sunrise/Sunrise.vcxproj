@@ -52,7 +52,7 @@
       <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)vendor\detours;$(ProjectDir)vendor\lua;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <TreatAngleIncludeAsExternal>true</TreatAngleIncludeAsExternal>
       <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
-      <PreprocessorDefinitions>WIN32;_WINDOWS;_USRDLL;WIN32_LEAN_AND_MEAN;NOMINMAX;IMGUI_USER_CONFIG=&quot;core/ui/imgui_user_config.h&quot;;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_USRDLL;WIN32_LEAN_AND_MEAN;NOMINMAX;IMGUI_USER_CONFIG="core/ui/imgui_user_config.h";%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -99,6 +99,7 @@
     <None Include="vendor\lua\UPSTREAM_README" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\client\hooks\player_scale\player_scale.cpp" />
     <ClCompile Include="src\state\gameplay\external\entity_object_types.cpp" />
     <ClCompile Include="src\dllmain.cpp" />
     <ClCompile Include="src\core\logging\log.cpp" />
@@ -244,6 +245,8 @@
     <ClCompile Include="src\client\hooks\sword_skate\sword_skate.cpp" />
     <ClCompile Include="src\client\hooks\fly\fly.cpp" />
     <ClCompile Include="src\client\hooks\infinite_ammo\infinite_ammo.cpp" />
+    <ClCompile Include="src\client\hooks\no_turnback\no_turnback.cpp" />
+    <ClCompile Include="src\client\hooks\godmode\godmode.cpp" />
     <ClCompile Include="src\client\input\window_focus.cpp" />
     <ClCompile Include="src\client\hooks\teleport\teleport_lifecycle.cpp" />
     <ClCompile Include="src\client\hooks\teleport\teleport_move.cpp" />
@@ -996,9 +999,9 @@
     <ClCompile Include="src\middleware\bap\activity_message\activity_entity_slots_decoder.cpp" />
     <ClCompile Include="src\middleware\bap\activity_message\activity_entity_authority_parser.cpp" />
     <ClCompile Include="src\middleware\bap\activity_message\activity_incident_encoder.cpp" />
-      <ClCompile Include="src\middleware\bap\activity_message\activity_incident_parser.cpp" />
-      <ClCompile Include="src\middleware\bap\activity_message\activity_cinematic_incident_codec.cpp" />
-      <ClCompile Include="src\middleware\bap\activity_message\activity_player_trigger_incident_codec.cpp" />
+    <ClCompile Include="src\middleware\bap\activity_message\activity_incident_parser.cpp" />
+    <ClCompile Include="src\middleware\bap\activity_message\activity_cinematic_incident_codec.cpp" />
+    <ClCompile Include="src\middleware\bap\activity_message\activity_player_trigger_incident_codec.cpp" />
     <ClCompile Include="src\middleware\bap\activity_message\activity_entity_slots_encoder.cpp" />
     <ClCompile Include="src\middleware\bap\activity_message\wire_schema\activity_communication_route.cpp" />
     <ClCompile Include="src\middleware\bap\activity_message\wire_schema\activity_wire_codec.cpp" />
@@ -1235,6 +1238,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resources\resource.h" />
+    <ClInclude Include="src\client\hooks\player_scale\player_scale.h" />
     <ClInclude Include="src\core\logging\log.h" />
     <ClInclude Include="src\core\logging\snapshot\snapshot.h" />
     <ClInclude Include="src\core\logging\snapshot\internal.h" />
@@ -1317,6 +1321,8 @@
     <ClInclude Include="src\client\hooks\sword_skate\sword_skate.h" />
     <ClInclude Include="src\client\hooks\fly\fly.h" />
     <ClInclude Include="src\client\hooks\infinite_ammo\infinite_ammo.h" />
+    <ClInclude Include="src\client\hooks\no_turnback\no_turnback.h" />
+    <ClInclude Include="src\client\hooks\godmode\godmode.h" />
     <ClInclude Include="src\client\input\window_focus.h" />
     <ClInclude Include="src\client\hooks\teleport\internal.h" />
     <ClInclude Include="src\client\hooks\teleport\runtime.h" />
