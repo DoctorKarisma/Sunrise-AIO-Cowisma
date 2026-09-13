@@ -18,6 +18,13 @@ inline constexpr float kMaximumPlayerScale = 10.0F;
 /** Normal Destiny player scale. */
 inline constexpr float kDefaultPlayerScale = 1.0F;
 
+/** Normal game-time rate. Values above this make the world advance faster. */
+inline constexpr float kDefaultWorldSpeed = 1.0F;
+/** Slowest world-time multiplier accepted by the interface and settings file. */
+inline constexpr float kMinimumWorldSpeed = 0.1F;
+/** Fastest world-time multiplier accepted by the interface and settings file. */
+inline constexpr float kMaximumWorldSpeed = 10.0F;
+
 /** Runtime player configuration. This module owns it; Core settings do not carry it. */
 struct Settings {
     bool infiniteAmmoEnabled{false};
@@ -36,6 +43,9 @@ struct Settings {
 
     /** 1.0 is the game's normal player size. */
     float playerScale{kDefaultPlayerScale};
+
+    /** 1.0 is normal game speed. */
+    float worldSpeed{kDefaultWorldSpeed};
 
     /** Prevents the turnback/out-of-bounds check from reporting the player outside the area. */
     bool noTurnbackEnabled{false};

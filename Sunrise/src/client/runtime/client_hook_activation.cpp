@@ -41,6 +41,7 @@
 #include "../hooks/stall_probe/stall_probe.h"
 #include "../hooks/teleport/runtime.h"
 #include "../hooks/world_objects/world_object_registry.h"
+#include "../hooks/world_speed/world_speed.h"
 #include "../patterns/registry.h"
 #include "../targets/game.h"
 #include "internal.h"
@@ -241,6 +242,7 @@ void clear_game_targets() noexcept {
     /*
      * Preserve Cowisma player features.
      */
+    (void)hooks::world_speed::install();
     (void)hooks::no_turnback::install();
     (void)hooks::godmode::install();
 

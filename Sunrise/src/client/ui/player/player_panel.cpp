@@ -8,6 +8,7 @@
 #include "../../hooks/godmode/godmode.h"
 #include "../../hooks/no_turnback/no_turnback.h"
 #include "../../hooks/player_scale/player_scale.h"
+#include "../../hooks/world_speed/world_speed.h"
 #include "../../player/player_settings_store.h"
 
 namespace sunrise::client::ui::player {
@@ -19,6 +20,7 @@ void draw() noexcept {
     client::player::Settings settings = client::player::get();
 
     static bool playerScaleApplyFailed = false;
+    static bool worldSpeedApplyFailed = false;
 
     ImGui::TextUnformatted("Infinite Ammo");
     ImGui::Separator();
@@ -67,7 +69,6 @@ void draw() noexcept {
     ImGui::EndDisabled();
 
     if (changed) {
-
         (void)client::player::publish(settings);
     }
 
@@ -129,8 +130,47 @@ void draw() noexcept {
     }
 
     if (playerScaleApplyFailed) {
-
         ImGui::TextDisabled("Player scale could not be applied.");
+    }
+
+    ImGui::Spacing();
+    ImGui::Spacing();
+
+    ImGui::TextUnformatted("World Speed");
+    ImGui::Separator();
+    ImGui::TextWrapped("Change how quickly game time advances. 1.0x is normal speed.");
+    ImGui::Spacing();
+
+    float worldSpeed = settings.worldSpeed;
+
+    ImGui::SetNextItemWidth(240.0F);
+
+    if (ImGui::SliderFloat("##world_speed",
+                           &worldSpeed,
+                           client::player::kMinimumWorldSpeed,
+                           client::player::kMaximumWorldSpeed,
+                           "%.2fx")) {
+
+        settings.worldSpeed = worldSpeed;
+
+        if (client::player::publish(settings)) {
+            worldSpeedApplyFailed = !hooks::world_speed::apply(settings.worldSpeed);
+        }
+    }
+
+    ImGui::SameLine();
+
+    if (ImGui::Button("Reset##world_speed")) {
+
+        settings.worldSpeed = client::player::kDefaultWorldSpeed;
+
+        if (client::player::publish(settings)) {
+            worldSpeedApplyFailed = !hooks::world_speed::apply(settings.worldSpeed);
+        }
+    }
+
+    if (worldSpeedApplyFailed) {
+        ImGui::TextDisabled("World speed could not be applied.");
     }
 
     ImGui::Spacing();

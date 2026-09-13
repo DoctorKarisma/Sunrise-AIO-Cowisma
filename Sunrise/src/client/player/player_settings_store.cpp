@@ -53,7 +53,6 @@ void report_fail(const char* reason) noexcept {
  * @param output Receives the value, untouched when the key is absent.
  */
 void boolean_for(std::string_view text, std::string_view key, bool& output) noexcept {
-
     const std::size_t at = text.find(key);
 
     if (at == std::string_view::npos) {
@@ -82,7 +81,6 @@ void boolean_for(std::string_view text, std::string_view key, bool& output) noex
  * @param output Receives the value only when it parses cleanly.
  */
 void integer_for(std::string_view text, std::string_view key, std::int32_t& output) noexcept {
-
     const std::size_t at = text.find(key);
 
     if (at == std::string_view::npos) {
@@ -102,7 +100,6 @@ void integer_for(std::string_view text, std::string_view key, std::int32_t& outp
     }
 
     const char* const first = text.data() + begin;
-
     const char* const last = text.data() + text.size();
 
     std::int32_t value = 0;
@@ -123,19 +120,20 @@ void integer_for(std::string_view text, std::string_view key, std::int32_t& outp
 /**
  * Finds one float after a key.
  * The settings document is tiny, so a bounded temporary buffer keeps parsing simple.
+ *
+ * @return True when a finite float was parsed.
  */
-void float_for(std::string_view text, std::string_view key, float& output) noexcept {
-
+[[nodiscard]] bool float_for(std::string_view text, std::string_view key, float& output) noexcept {
     const std::size_t at = text.find(key);
 
     if (at == std::string_view::npos) {
-        return;
+        return false;
     }
 
     const std::size_t colon = text.find(':', at + key.size());
 
     if (colon == std::string_view::npos) {
-        return;
+        return false;
     }
 
     std::size_t begin = colon + 1;
@@ -149,24 +147,22 @@ void float_for(std::string_view text, std::string_view key, float& output) noexc
 
     while (begin < text.size() && length + 1 < number.size() && text[begin] != ','
            && text[begin] != '}' && text[begin] != '\r' && text[begin] != '\n') {
-
         number[length++] = text[begin++];
     }
 
     if (length == 0) {
-        return;
+        return false;
     }
 
     char* end = nullptr;
-
     const float value = std::strtof(number.data(), &end);
 
-    if (end == number.data() || !std::isfinite(value) || value < kMinimumPlayerScale
-        || value > kMaximumPlayerScale) {
-        return;
+    if (end == number.data() || !std::isfinite(value)) {
+        return false;
     }
 
     output = value;
+    return true;
 }
 
 /**
@@ -179,9 +175,10 @@ void float_for(std::string_view text, std::string_view key, float& output) noexc
  *
  *     playerScaleEnabled = false
  *     playerScale        = 1.0
+ *
+ * World Speed is persistent and is restored from player.json.
  */
 void parse(std::string_view text, Settings& output) noexcept {
-
     boolean_for(text, "\"infinite_ammo_enabled\"", output.infiniteAmmoEnabled);
 
     boolean_for(text, "\"anti_afk_enabled\"", output.antiAfkEnabled);
@@ -198,9 +195,15 @@ void parse(std::string_view text, Settings& output) noexcept {
      *
      * Player Size always begins disabled at 1.00x.
      */
-
     output.playerScaleEnabled = false;
     output.playerScale = kDefaultPlayerScale;
+
+    float worldSpeed = output.worldSpeed;
+
+    if (float_for(text, "\"world_speed\"", worldSpeed) && worldSpeed >= kMinimumWorldSpeed
+        && worldSpeed <= kMaximumWorldSpeed) {
+        output.worldSpeed = worldSpeed;
+    }
 
     boolean_for(text, "\"no_turnback_enabled\"", output.noTurnbackEnabled);
 
@@ -212,7 +215,6 @@ void parse(std::string_view text, Settings& output) noexcept {
  * @return True when every byte reached the file.
  */
 [[nodiscard]] bool store(const Settings& settings) noexcept {
-
     if (!g_pathResolved) {
         return false;
     }
@@ -228,6 +230,7 @@ void parse(std::string_view text, Settings& output) noexcept {
                                    "  \"field_of_view\": %d,\n"
                                    "  \"player_scale_enabled\": %s,\n"
                                    "  \"player_scale\": %.3f,\n"
+                                   "  \"world_speed\": %.3f,\n"
                                    "  \"no_turnback_enabled\": %s,\n"
                                    "  \"godmode_enabled\": %s\n"
                                    "}\n",
@@ -237,6 +240,7 @@ void parse(std::string_view text, Settings& output) noexcept {
                                    static_cast<int>(settings.fieldOfView),
                                    settings.playerScaleEnabled ? "true" : "false",
                                    static_cast<double>(settings.playerScale),
+                                   static_cast<double>(settings.worldSpeed),
                                    settings.noTurnbackEnabled ? "true" : "false",
                                    settings.godmodeEnabled ? "true" : "false");
 
@@ -269,7 +273,6 @@ void parse(std::string_view text, Settings& output) noexcept {
 
 /** Reads the configuration file into the active settings when one exists. */
 void load() noexcept {
-
     const HANDLE file = CreateFileW(g_path.chars.data(),
                                     GENERIC_READ,
                                     FILE_SHARE_READ,
@@ -303,7 +306,6 @@ void load() noexcept {
 
 /** Resolves the configuration file and loads it when one exists. */
 void initialize(void* module) noexcept {
-
     AcquireSRWLockExclusive(&g_lock);
 
     g_settings = Settings{};
@@ -312,7 +314,6 @@ void initialize(void* module) noexcept {
         core::path::artifact_directory(module, g_path) && core::path::append(g_path, kFileSuffix);
 
     if (g_pathResolved) {
-
         load();
 
         /*
@@ -327,13 +328,15 @@ void initialize(void* module) noexcept {
         /*
          * Immediately clean any values left by the previous
          * build/session from player.json.
+         *
+         * World Speed is intentionally left untouched so it
+         * persists between launches.
          */
         if (!store(g_settings)) {
             report_fail("startup_reset_write");
         }
 
     } else {
-
         report_fail("path");
     }
 
@@ -343,14 +346,12 @@ void initialize(void* module) noexcept {
 /**
  * Resets Player Size before dropping the runtime configuration.
  *
- * Other player settings retain their current values on disk.
+ * Other player settings, including World Speed, retain their current values on disk.
  */
 void shutdown() noexcept {
-
     AcquireSRWLockExclusive(&g_lock);
 
     if (g_pathResolved) {
-
         /*
          * Player Size must never persist into another session.
          */
@@ -371,7 +372,6 @@ void shutdown() noexcept {
 
 /** @return One lock-consistent copy of the current configuration. */
 Settings get() noexcept {
-
     AcquireSRWLockShared(&g_lock);
 
     const Settings snapshot = g_settings;
@@ -383,13 +383,17 @@ Settings get() noexcept {
 
 /** Publishes one configuration and writes it straight to disk. */
 bool publish(const Settings& settings) noexcept {
-
     if (settings.fieldOfView < kMinimumFieldOfView || settings.fieldOfView > kMaximumFieldOfView) {
         return false;
     }
 
     if (!std::isfinite(settings.playerScale) || settings.playerScale < kMinimumPlayerScale
         || settings.playerScale > kMaximumPlayerScale) {
+        return false;
+    }
+
+    if (!std::isfinite(settings.worldSpeed) || settings.worldSpeed < kMinimumWorldSpeed
+        || settings.worldSpeed > kMaximumWorldSpeed) {
         return false;
     }
 
