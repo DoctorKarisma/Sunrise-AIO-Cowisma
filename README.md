@@ -1,189 +1,123 @@
-# Sunrise
+# Sunrise AIO Cowisma
 
-Destiny 2 Offline Exploration Mod
+**Sunrise AIO Cowisma** is a community-maintained all-in-one fork of **Sunrise**, combining features and improvements from **Sunrise-Cow**, **Sunrise-AIO-Karisma**, and other community Sunrise work into one build.
 
-> This mod installs onto an old build of the game and allows you to play it offline, loading into
-> destinations and exploring them.
->
-> Most gameplay features are not currently supported. (Missions, Enemies, NPCs, Quests, Persistent Saves, ...)
+It is intended for people who want a more feature-complete Sunrise setup without having to manually combine multiple forks and additions themselves.
 
-- [Install Instructions](https://github.com/stanuwu/Sunrise/wiki/Installing)
-- [FAQ](https://github.com/stanuwu/Sunrise/wiki/FAQ)
-- [Common Issues](https://github.com/stanuwu/Sunrise/wiki/Common-Issues)
-- [Discord](https://discord.gg/22JS6et5k9)
+> [!IMPORTANT]
+> This is an **unofficial community fork**. It is not the original Sunrise project and is not maintained by the original Sunrise developers.
+
+## What is Sunrise?
+
+Sunrise is a **Destiny 2 Offline Exploration Mod** designed for an older Destiny 2 build.
+
+It allows the game to be run against a local/offline implementation so destinations and otherwise inaccessible game content can be explored without the normal live Destiny 2 services.
+
+The original project is maintained by **stanuwu**:
+
+https://github.com/stanuwu/Sunrise
+
+## What is Cowisma?
+
+Cowisma is the continuation of my previous **Sunrise-AIO-Karisma** project, now built around and combined with work from **Sunrise-Cow**.
+
+The goal is simple:
+
+**Bring useful Sunrise community features together into one maintained build while keeping them convenient to use.**
+
+Instead of choosing between different forks for individual features, Cowisma aims to provide one version containing the features that work well together.
 
 ## Features
-- Load into any Destination (matchmade activities are currently broken)
-- Exploration Features (Fly, Noclip, Activity Override, ...)
-- Basic Inventory Management
 
-## WIP
+Cowisma includes the core Sunrise functionality along with additional community features and improvements, including:
 
-This mod is a work in progress. Things might break or work in unexpected ways. There is also
-currently a lack of documentation. This will improve over the coming weeks.
+* Inventory and gear editing
+* Entity spawning
+* Player position / coordinates HUD
+* Player size controls
+* Live field-of-view override
+* Animated RGB menu/HUD borders
+* Tower event support
+* Event vendor support
+* Various fixes and improvements inherited from the Sunrise community forks
 
-## Support Me
+More features may be added as the different Sunrise projects continue to develop.
 
-Leave a star on this repo.
+## Tower Events
 
-If you want to support my open source work you can find the means on my
-[profile](https://github.com/stanuwu). Also consider donating to charity instead.
+Cowisma includes support for activating Tower event content such as:
 
-All content released under this project is free and open source. If someone is trying to sell you
-something you are getting scammed.
+* Festival of the Lost
+* The Dawning
+* Solstice
+* Iron Banner
+* Crimson Days
+* Trials / Saint-14 related Tower content
 
-## Rules
-Issues are for bug reports only.
+Festival of the Lost also includes support for **native candy pickups and rewards**.
 
-PRs are for pull requests only.
+Some Tower behavior is driven by separate mission Lua scripts. When a release requires additional scripts, they will be provided separately with the release or its installation instructions.
 
-Do not go and argue/chat there, you can do that on the discord.
+## Installation
 
-## Building
+> [!WARNING]
+> Sunrise requires the compatible older Destiny 2 build. It is not designed to be installed into the current live version of Destiny 2.
 
-### Windows
+Download the latest Cowisma release from the **Releases** section of this repository and follow the instructions included with that release.
 
-Install Visual Studio 2026 with the **Desktop development with C++** workload. The project builds
-against the v145 toolset and the 10.0.26100 Windows SDK, so check that both are selected in the
-installer.
+If additional Sunrise scripts are included with a release, make sure they are installed in the locations specified by the release notes.
 
-The easiest route is to open `Sunrise.sln`, select the `Release` `x64` configuration and build.
+## Updating from AIO-Karisma
 
-To build from a command line, use the Developer PowerShell for VS 2026:
+**Sunrise-AIO-Karisma has been superseded by Sunrise-AIO-Cowisma.**
 
-1. Clone the repository
-```powershell
-git clone https://github.com/stanuwu/Sunrise
-cd Sunrise
-```
+If you were previously using AIO-Karisma, use Cowisma for current development and future updates.
 
-2. Build the solution
-```powershell
-msbuild Sunrise.sln /m /p:Configuration=Release /p:Platform=x64
-```
+Old AIO-Karisma repository:
 
-### Linux
+https://github.com/DoctorKarisma/Sunrise-AIO-Karisma
 
-Make sure you have `git`, `cmake`, `clang`, `ninja`, `llvm`, and `xwin` installed.
+Current repository:
 
-1. Clone the repository
-```bash
-$ git clone https://github.com/stanuwu/Sunrise
-$ cd Sunrise
-```
+https://github.com/DoctorKarisma/Sunrise-AIO-Cowisma
 
-2. Download Windows headers:
-```bash
-$ xwin --sdk-version 10.0.26100 --accept-license splat --include-debug-libs --output .xwin-cache
-```
+## Work in Progress
 
-3. Configure and build the project
-```bash
-$ cmake -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=$(pwd)/linux-to-win-toolchain.cmake -DCMAKE_BUILD_TYPE=Release
-$ cmake --build build
-```
+Sunrise and AIO-Cowisma are works in progress.
 
-## Contributing
+Expect bugs, incomplete game systems, activities that do not behave exactly like the original live game, and features that may change as Sunrise development progresses.
 
-Pull Requests are welcome. Please follow these rules:
+If something breaks, please provide enough information to reproduce it when opening an issue.
 
-- **No Copyrighted Data** - All game data should be extracted at runtime.
-- **Code Formatting** - Stick to the provided clang-format and clang-tidy configs.
-- **Clean Code** - Try to post readable high-quality code, follow the project's existing style of
-  comment and add docs.
-- **Provide Documentation** - Please explain what you changed, why you changed it and the effects it
-  has in detail, it saves me a lot of work.
-- **Follow Up** - If something with the PR is not right, I will reply and ask you to fix it.
-- **One Feature** - Do not put multiple features into one PR.
-- **Complete Implementations** - Do not PR features that are not completed and/or have non-functional parts.
-- **Server Focus** - For features that are intended to be part of the server, don't abuse client patches. Sometimes it's needed but mostly everything should go through the right requests and pushes.
+Useful reports include:
+
+* What destination/activity you were in
+* What you were doing when the problem occurred
+* Whether the problem also occurs on the upstream Sunrise/Cow build
+* Relevant Sunrise logs
+* Screenshots or video when useful
+* Steps that consistently reproduce the problem
 
 ## Credits
 
-### All Contributors
+Cowisma would not exist without the work of the Sunrise community.
 
-### Dependencies:
+Major projects and contributors this build draws from include:
 
-- https://github.com/ocornut/imgui
-- https://github.com/microsoft/detours
-- https://lua.org/
+* **stanuwu / Sunrise** — original Sunrise project
+* **PvtSeaCow / Sunrise-Cow**
+* **ReGlitched / Entity spawner**
+* **Nyxaraa / Sunrise-Nyxara**
+* **WalterGerig / SunriseGearEditor**
+* **ltsReaver / Godmode, No Turnback, FoV, Coordinate fly, and World speed**
+* Other Sunrise contributors whose work has been incorporated upstream or through community development
 
-### Artwork:
+Please support the original projects and contributors responsible for the features Cowisma builds upon.
 
-- [Solus](https://www.youtube.com/@Solus-yt)
+## Disclaimer
 
-### Testing:
+This is an unofficial community project intended for offline/private-server experimentation and preservation/research purposes.
 
-- [Ferr](https://x.com/light_fades_awy)
-- [gage](https://x.com/_Quolu_)
-- [Jenka](https://youtube.com/@jenkad2oob?si=OQpCGeBCEJBS0zHx)
-- [Katie](https://github.com/Confetti3)
-- [Kody Ivie](https://x.com/Kody_Ivie)
-- [Solus](https://www.youtube.com/@Solus-yt)
-- Breshi
-- [Deltadog55](https://www.youtube.com/@deltadog55)
-- Moosh
-- [MoveableFormula](https://youtube.com/@movableformula)
-- Z
-- The Cube17
+Cowisma is not affiliated with or endorsed by Bungie.
 
-### Inspiration/Helpful Repos
-
-- https://github.com/v4nguard/tiger-pkg
-- https://github.com/cohaereo/alkahest
-- https://codeberg.org/V4NGUARD/tachyscope
-- https://github.com/MontagueM/D2TagParser
-- https://github.com/MontagueM/DestinyUnpackerCPP
-- https://github.com/nblockbuster/D2TextureRipper
-- https://github.com/v4nguard/tiger-parse
-- https://github.com/Demonware-Custom-Server/demonware-cod4
-- https://github.com/hosseinpourziyaie/demonware-companion
-- https://github.com/jordam/demonbugger
-- https://github.com/project-bo4/shield-development
-- https://github.com/MontagueM/Charm
-- https://github.com/v4nguard/quicktag
-- https://github.com/nblockbuster/D2StaticDocs
-- https://github.com/MontagueM/D2Maps
-- https://github.com/MontagueM/DestinyMapmining
-- https://github.com/nblockbuster/tachyscope
-- https://github.com/cohaereo/destinydocs
-- https://github.com/MontagueM/DestinyUnpacker
-- https://github.com/nblockbuster/bungie-lua-decompiler
-
-### Other:
-
-- [Ginsor](https://x.com/GinsorKR) - Gave me some useful pointers
-
-> Want to be added to or removed from the credits? Let me know.
-
-## Content Disclaimer
-
-Sunrise is not:
-
-- A Crack
-- A Cheat
-- A Custom Server
-
-Everyone needs to provide their own copy of the game, no piracy is happening. The mod does not
-connect to any servers, it runs completely locally. We do not offer any servers or services.
-
-## Legal Disclaimer
-
-This project is not for profit. It does not affect live servers or newer versions of the game where
-research like this could pose a security risk. No game data will be included in the release so this
-is not a copyright violation. This is also not a circumvention of protective measures. Please do not
-file any DMCA or other copyright claims against this. Legal action will be taken for abuse of the
-copyright system to censor this work.
-
-## AI Disclaimer
-
-AI was used in the creation of this project. If you are not comfortable with the use of AI in
-programming projects beware.
-
-AI was NOT used to create any art or creative writing. Only for RE, development and documentation
-purposes. All AI work that is publicly released is reviewed by a human. AI is a tool and the user is
-responsible for the results it produces.
-
-## Affiliation Disclaimer
-
-This project is not affiliated with Bungie or Sony in any way.
+Destiny, Destiny 2, Bungie, and related names and assets belong to their respective owners.
