@@ -136,9 +136,12 @@ void report(ProgressProbe probe, void* context, Phase phase) noexcept {
 }
 
 /** Resolves one exact actor definition tag against the validated sorted actor section. */
-[[nodiscard]] bool
-resolve_actor(void* opaque, std::uint32_t definitionTag, std::uint32_t& output) noexcept {
+[[nodiscard]] bool resolve_actor(void* opaque,
+                                 std::uint32_t definitionTag,
+                                 std::uint32_t& output,
+                                 std::array<std::int8_t, 4>& authoredSpawnProfile) noexcept {
     output = format::kAbsentIndex;
+    authoredSpawnProfile = {};
     if (opaque == nullptr) {
         return false;
     }
@@ -154,6 +157,7 @@ resolve_actor(void* opaque, std::uint32_t definitionTag, std::uint32_t& output) 
         return false;
     }
     output = static_cast<std::uint32_t>(found - actors.begin());
+    authoredSpawnProfile = found->authoredSpawnProfile;
     return true;
 }
 
@@ -503,3 +507,4 @@ Status publish(void* module,
 }
 
 } // namespace sunrise::client::content::activity::sdk_generation::native_pack_pipeline
+

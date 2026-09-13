@@ -22,10 +22,11 @@ using TagReader = bool (*)(void* context,
                            std::vector<std::byte>& bytes,
                            std::uint32_t& classId) noexcept;
 
-/** The actor inventory may close one exact definition tag to its final row index. */
+/** The actor inventory closes one exact definition tag to its final row and spawn profile. */
 using ActorResolver = bool (*)(void* context,
                                std::uint32_t definitionTag,
-                               std::uint32_t& actorClassIndex) noexcept;
+                               std::uint32_t& actorClassIndex,
+                               std::array<std::int8_t, 4>& authoredSpawnProfile) noexcept;
 
 enum class CandidateState : std::uint8_t {
     nullPlacement,
@@ -282,3 +283,4 @@ struct GraphSnapshot;
                          Snapshot& output) noexcept;
 
 } // namespace sunrise::client::content::activity::sdk_generation::squad_inventory
+

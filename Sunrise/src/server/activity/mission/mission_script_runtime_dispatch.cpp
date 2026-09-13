@@ -246,6 +246,50 @@ void arm_state_region_teleport(RuntimeInstance& instance,
            || status == scenes::SceneStatus::outputBusy;
 }
 
+/** Logs the exact squad row and runnable-mask facts behind a placement refusal. */
+void report_squad_refusal(RuntimeInstance& instance,
+                          const char* status,
+                          const lua_vm::Intent& intent) noexcept {
+    static thread_local std::array<char, 320> detail{};
+    detail.fill('\0');
+
+    std::uint32_t flags = 0;
+    bool rowAvailable = false;
+    if (instance.view.catalog != nullptr) {
+        const auto catalogSquads = instance.view.catalog->squads();
+        if (intent.firstRow < catalogSquads.size()) {
+            flags = catalogSquads[intent.firstRow].flags;
+            rowAvailable = true;
+        }
+    }
+
+    const std::uint32_t required = format::kSquadRunnableMask;
+    const std::uint32_t missing = required & ~flags;
+
+    const int written =
+        std::snprintf(detail.data(),
+                      detail.size(),
+                      "status=%s squad_row=%llu count_entries=%llu mode=%llu retire=%llu "
+                      "row_available=%llu flags=0x%08X required=0x%08X missing=0x%08X",
+                      status != nullptr ? status : "unknown",
+                      static_cast<unsigned long long>(intent.firstRow),
+                      static_cast<unsigned long long>(intent.squadCount),
+                      static_cast<unsigned long long>(intent.squadMode),
+                      static_cast<unsigned long long>(intent.squadRetireOnReturn ? 1 : 0),
+                      static_cast<unsigned long long>(rowAvailable ? 1 : 0),
+                      static_cast<unsigned>(flags),
+                      static_cast<unsigned>(required),
+                      static_cast<unsigned>(missing));
+
+    if (written > 0) {
+        const std::size_t length = (std::min)(static_cast<std::size_t>(written), detail.size() - 1);
+        log_line(core::log::Level::warn,
+                 &instance,
+                 "squad_probe",
+                 std::string_view{detail.data(), length});
+    }
+}
+
 /** Raises one queued intent, or advances the delivery already in flight. */
 void dispatch_intent(RuntimeInstance& instance, std::uint64_t now) noexcept {
     if (instance.programStatus != ProgramStatus::loaded) {
@@ -368,6 +412,7 @@ void dispatch_intent(RuntimeInstance& instance, std::uint64_t now) noexcept {
         host::ScriptableOutputReservation reservation{};
         if (!reserve_delivery(instance, reservation)) {
             if (instance.programStatus == ProgramStatus::loaded) {
+                report_squad_refusal(instance, "host_reservation_unavailable", intent);
                 refuse_delivery(instance,
                                 "squad_refused",
                                 "host_reservation_unavailable",
@@ -387,6 +432,7 @@ void dispatch_intent(RuntimeInstance& instance, std::uint64_t now) noexcept {
         } else if (!abandon_reserved_delivery(instance, reservation)) {
             return;
         } else {
+            report_squad_refusal(instance, squads::status_name(status), intent);
             refuse_delivery(instance,
                             "squad_refused",
                             squads::status_name(status),

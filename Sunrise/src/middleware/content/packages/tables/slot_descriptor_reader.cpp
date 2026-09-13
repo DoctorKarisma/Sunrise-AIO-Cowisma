@@ -5,6 +5,7 @@
 
 #include "definition_index_table.h"
 #include "internal.h"
+#include "roster_intersection.h"
 
 namespace sunrise::middleware::content::packages::tables {
 namespace {
@@ -219,7 +220,11 @@ bool walk_slot_descriptor_chain(std::uint32_t rootTag,
             return false;
         }
         if (direct != kSlotDirectTagAbsent) {
-            // This is the ordinary authored object-list branch, not a descriptor redirect.
+            if (is_event_roster_key(registryKey)) {
+                if (!push_child(pending, pendingCount, scheduledCount, direct, current.depth + 1)) {
+                    return false;
+                }
+            }
             continue;
         }
         Array targets{};
@@ -465,14 +470,13 @@ bool next_descriptor_tag(std::span<const std::byte> blob,
     if (classId != kSlotIndirectClass) {
         return false;
     }
-    std::uint32_t direct = 0;
-    if (!read(blob, kSlotDirectTagOffset, direct) || direct != kSlotDirectTagAbsent) {
-        return false;
-    }
     Array handles{};
-    return find_array_at(blob, kSlotIndirectDescriptor, handles) && handles.count != 0
-           && handles.elementClass == kSlotRedirectElementClass
-           && read(blob, handles.dataOffset, tag);
+    if (find_array_at(blob, kSlotIndirectDescriptor, handles) && handles.count != 0
+        && handles.elementClass == kSlotRedirectElementClass
+        && read(blob, handles.dataOffset, tag)) {
+        return true;
+    }
+    return read(blob, kSlotDirectTagOffset, tag) && tag != 0 && tag != kSlotDirectTagAbsent;
 }
 
 } // namespace sunrise::middleware::content::packages::tables

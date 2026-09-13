@@ -27,6 +27,7 @@ inline constexpr std::uint16_t kNotARosterGroup = 0xFFFF;
 /** One memo row: a placed-object tag and the roster group it produced. */
 struct ObjectMemo {
     std::uint32_t tag{};
+    std::uint32_t registryKey{};
     std::uint16_t group{kNotARosterGroup};
 };
 
@@ -268,6 +269,9 @@ void publish_groups(Walk& walk, layouts::Definition& row) noexcept;
  * @param group Receives the roster group index, or the not-a-group sentinel.
  * @return True when the object was read or was already known.
  */
+[[nodiscard]] std::uint32_t memoised_object_key(const RosterStorage& storage,
+                                                std::uint32_t objectTag) noexcept;
+
 [[nodiscard]] bool resolve_object(const reader::Source& source,
                                   reader::Scratch& scratch,
                                   RosterStorage& storage,

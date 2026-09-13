@@ -2,9 +2,11 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdio>
 #include <string_view>
 #include <vector>
 
+#include "../../../../../core/logging/log.h"
 #include "../../../../../middleware/bap/activity_message/darkness_zone_auth.h"
 #include "../../../../../middleware/content/packages/tables/region_reader.h"
 #include "../../../../../state/activity/defaults/activity_defaults_snapshot.h"
@@ -112,32 +114,120 @@ bool activate_staged_squad_override(Session& session) noexcept {
     const RosterPublication& staged = session.activityRosterStaged;
     const server::activity::host::PendingScriptableOverride& pending = staged.scriptableOverride;
     const server::activity::host::ScriptableTarget& target = pending.target;
-    if (!staged.staged || !staged.hasScriptableOverride || !staged.activatesSquadOverride
-        || staged.bindingGeneration == 0
-        || staged.bindingGeneration != session.activity.bindingGeneration
-        || pending.expectedActivityClientGeneration != staged.bindingGeneration
-        || pending.kind != server::activity::host::ScriptableOverrideKind::squad
-        || (target.stateLocalRoster && !staged.hasSquadStateSequence)) {
+
+    const auto log_fail = [](std::string_view reason) noexcept {
+        std::array<char, 160> line{};
+        const int written =
+            std::snprintf(line.data(),
+                          line.size(),
+                          "ev=activity stage=squad_activate result=fail reason=%.*s",
+                          static_cast<int>(reason.size()),
+                          reason.data());
+        if (written > 0) {
+            core::log::write(core::log::Channel::server,
+                             core::log::Level::warn,
+                             {line.data(), static_cast<std::size_t>(written)});
+        }
+    };
+
+    const auto log_ok = [](std::string_view reason) noexcept {
+        std::array<char, 160> line{};
+        const int written = std::snprintf(line.data(),
+                                          line.size(),
+                                          "ev=activity stage=squad_activate result=ok reason=%.*s",
+                                          static_cast<int>(reason.size()),
+                                          reason.data());
+        if (written > 0) {
+            core::log::write(core::log::Channel::server,
+                             core::log::Level::warn,
+                             {line.data(), static_cast<std::size_t>(written)});
+        }
+    };
+
+    if (!staged.staged) {
+        log_fail("not_staged");
         return false;
     }
+    if (!staged.hasScriptableOverride) {
+        log_fail("no_scriptable_override");
+        return false;
+    }
+    if (!staged.activatesSquadOverride) {
+        log_fail("not_squad_activation");
+        return false;
+    }
+    if (staged.bindingGeneration == 0) {
+        log_fail("zero_binding_generation");
+        return false;
+    }
+    if (staged.bindingGeneration != session.activity.bindingGeneration) {
+        log_fail("binding_generation_mismatch");
+        return false;
+    }
+    if (pending.expectedActivityClientGeneration != staged.bindingGeneration) {
+        log_fail("expected_generation_mismatch");
+        return false;
+    }
+    if (pending.kind != server::activity::host::ScriptableOverrideKind::squad) {
+        log_fail("wrong_kind");
+        return false;
+    }
+    if (target.stateLocalRoster && !staged.hasSquadStateSequence) {
+        log_fail("missing_state_sequence");
+        return false;
+    }
+
     RetainedSquadAuth retained{};
     if (!make_retained_squad_auth(pending, session.activity.bindingGeneration, retained)) {
+        log_fail("make_retained_auth");
         return false;
     }
+
     if (target.stateLocalRoster) {
         const layouts::RosterGroup& group = pending.stateLocalRosterGroup;
-        if (staged.stateLocalRegion != target.stateLocalRegion
-            || !layouts::valid_roster_group(group)
-            || target.rosterGroupIndex != server::activity::host::kGeneratedRosterGroupIndex
-            || target.sdkObjectIndex == server::activity::host::kNoSdkObjectIndex
-            || group.objectTag != target.objectTag || group.registryKey != target.registryKey
-            || target.rosterSlotOffset >= group.slotCount
-            || group.slotTypes[target.rosterSlotOffset] != target.slotType
-            || group.slotIndices[target.rosterSlotOffset] != target.slotIndex
-            || (group.slotFlags[target.rosterSlotOffset] & message::kSlotAuthFlag) == 0) {
+
+        if (staged.stateLocalRegion != target.stateLocalRegion) {
+            log_fail("state_local_region_mismatch");
+            return false;
+        }
+        if (!layouts::valid_roster_group(group)) {
+            log_fail("invalid_roster_group");
+            return false;
+        }
+        if (target.rosterGroupIndex != server::activity::host::kGeneratedRosterGroupIndex) {
+            log_fail("wrong_generated_group_index");
+            return false;
+        }
+        if (target.sdkObjectIndex == server::activity::host::kNoSdkObjectIndex) {
+            log_fail("no_sdk_object_index");
+            return false;
+        }
+        if (group.objectTag != target.objectTag) {
+            log_fail("object_tag_mismatch");
+            return false;
+        }
+        if (group.registryKey != target.registryKey) {
+            log_fail("registry_key_mismatch");
+            return false;
+        }
+        if (target.rosterSlotOffset >= group.slotCount) {
+            log_fail("slot_offset_out_of_range");
+            return false;
+        }
+        if (group.slotTypes[target.rosterSlotOffset] != target.slotType) {
+            log_fail("slot_type_mismatch");
+            return false;
+        }
+        if (group.slotIndices[target.rosterSlotOffset] != target.slotIndex) {
+            log_fail("slot_index_mismatch");
+            return false;
+        }
+        if ((group.slotFlags[target.rosterSlotOffset] & message::kSlotAuthFlag) == 0) {
+            log_fail("missing_auth_flag");
             return false;
         }
     } else if (target.stateLocalRegion >= 0) {
+        log_fail("nonlocal_target_has_region");
         return false;
     }
 
@@ -158,19 +248,25 @@ bool activate_staged_squad_override(Session& session) noexcept {
         lease.authCount = 1;
         lease.groupCount = 1;
         lease.active = true;
+        log_ok("new_lease");
         return true;
     }
+
     if (!valid_retained_squad_lease(lease, session.activity.bindingGeneration)) {
+        log_fail("invalid_existing_lease");
         return false;
     }
+
     const std::size_t groupIndex = retained_group_index(lease, target);
     if (groupIndex < lease.groupCount) {
         RetainedSquadGroup& group = lease.groups[groupIndex];
         if (target.stateLocalRoster
             && (!same_generated_group(group.stateLocalRosterGroup, pending.stateLocalRosterGroup)
                 || staged.squadStateSequence != group.stateSequence)) {
+            log_fail("generated_group_changed");
             return false;
         }
+
         retained.groupIndex = static_cast<std::uint8_t>(groupIndex);
         for (std::size_t index = 0; index < lease.authCount; ++index) {
             if (lease.authBodies[index].groupIndex != groupIndex
@@ -178,26 +274,42 @@ bool activate_staged_squad_override(Session& session) noexcept {
                 continue;
             }
             lease.authBodies[index] = retained;
+            log_ok("updated_existing_auth");
             return true;
         }
-        if (lease.authCount >= lease.authBodies.size()
-            || (target.stateLocalRoster
-                && group.authCount >= group.stateLocalRosterGroup.slotCount)) {
+
+        if (lease.authCount >= lease.authBodies.size()) {
+            log_fail("auth_capacity");
             return false;
         }
+        if (target.stateLocalRoster && group.authCount >= group.stateLocalRosterGroup.slotCount) {
+            log_fail("group_auth_capacity");
+            return false;
+        }
+
         lease.authBodies[lease.authCount] = retained;
         ++lease.authCount;
         ++group.authCount;
+        log_ok("added_auth");
         return true;
     }
-    if (lease.groupCount >= lease.groups.size() || lease.authCount >= lease.authBodies.size()) {
+
+    if (lease.groupCount >= lease.groups.size()) {
+        log_fail("group_capacity");
         return false;
     }
+    if (lease.authCount >= lease.authBodies.size()) {
+        log_fail("global_auth_capacity");
+        return false;
+    }
+
     for (std::size_t index = 0; index < lease.groupCount; ++index) {
         if (lease.groups[index].scopeTarget.registryKey == target.registryKey) {
+            log_fail("duplicate_registry_key");
             return false;
         }
     }
+
     RetainedSquadGroup& group = lease.groups[lease.groupCount];
     group = {};
     group.scopeTarget = target;
@@ -212,6 +324,7 @@ bool activate_staged_squad_override(Session& session) noexcept {
     lease.authBodies[lease.authCount] = retained;
     ++lease.authCount;
     ++lease.groupCount;
+    log_ok("added_group");
     return true;
 }
 

@@ -245,10 +245,67 @@ inline constexpr std::uint32_t kSquadMemberActorClassExact = 0x1U;
 inline constexpr std::uint32_t kSquadMemberCandidateCountsComplete = 0x2U;
 inline constexpr std::uint32_t kSquadMemberCandidateCountsInvariant = 0x4U;
 inline constexpr std::uint32_t kSquadMemberNoNullCandidates = 0x8U;
-inline constexpr std::uint32_t kSquadMemberFlagMask = 0xFU;
+/** Every viable authored candidate resolves to one identical four-lane spawn profile. */
+inline constexpr std::uint32_t kSquadMemberAuthoredProfileExact = 0x10U;
+/** The four logical profile lanes occupy 2, 3, 2 and 3 bits above the existing member flags. */
+inline constexpr std::array<std::uint8_t, 4> kSquadMemberAuthoredProfileWidths{2U, 3U, 2U, 3U};
+inline constexpr std::array<std::uint8_t, 4> kSquadMemberAuthoredProfileShifts{5U, 7U, 10U, 12U};
+inline constexpr std::uint32_t kSquadMemberAuthoredProfileDataMask = 0x7FE0U;
+inline constexpr std::uint32_t kSquadMemberFlagMask = 0x7FFFU;
 inline constexpr std::uint32_t kSquadMemberInvariantReadyMask =
     kSquadMemberCandidateCountsComplete | kSquadMemberCandidateCountsInvariant
     | kSquadMemberNoNullCandidates;
+
+/** @return True when all four logical authored-profile values fit their exact wire domains. */
+[[nodiscard]] constexpr bool valid_squad_member_authored_profile(
+    const std::array<std::int8_t, 4>& profile) noexcept {
+    for (std::size_t index = 0; index < profile.size(); ++index) {
+        const std::int32_t value = profile[index];
+        const std::uint8_t width = kSquadMemberAuthoredProfileWidths[index];
+        if (value < 0 || value >= (std::int32_t{1} << width) - 1) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/** Packs one exact logical authored profile into otherwise-unused SquadMember flag bits. */
+[[nodiscard]] constexpr bool encode_squad_member_authored_profile(
+    const std::array<std::int8_t, 4>& profile,
+    std::uint32_t& flags) noexcept {
+    if (!valid_squad_member_authored_profile(profile)) {
+        return false;
+    }
+    flags &= ~kSquadMemberAuthoredProfileDataMask;
+    flags |= kSquadMemberAuthoredProfileExact;
+    for (std::size_t index = 0; index < profile.size(); ++index) {
+        flags |= static_cast<std::uint32_t>(profile[index])
+                 << kSquadMemberAuthoredProfileShifts[index];
+    }
+    return true;
+}
+
+/** Decodes one exact logical authored profile retained in SquadMember flag bits. */
+[[nodiscard]] constexpr bool decode_squad_member_authored_profile(
+    std::uint32_t flags,
+    std::array<std::int8_t, 4>& profile) noexcept {
+    profile = {};
+    if ((flags & kSquadMemberAuthoredProfileExact) == 0) {
+        return false;
+    }
+    for (std::size_t index = 0; index < profile.size(); ++index) {
+        const std::uint8_t width = kSquadMemberAuthoredProfileWidths[index];
+        const std::uint32_t laneMask = (std::uint32_t{1} << width) - 1U;
+        const std::uint32_t value =
+            (flags >> kSquadMemberAuthoredProfileShifts[index]) & laneMask;
+        if (value >= laneMask) {
+            profile = {};
+            return false;
+        }
+        profile[index] = static_cast<std::int8_t>(value);
+    }
+    return true;
+}
 /** Anchor rows carry only the exact placed-entry and position fact. */
 inline constexpr std::uint32_t kSquadAnchorExact = 0x1U;
 /** The placement came from the spawner's own point set, not from an object list. */
@@ -1735,3 +1792,4 @@ static_assert(offsetof(TaskTarget, flags) == offset::kTaskTargetFlags);
 static_assert(offsetof(TaskTarget, reserved) == offset::kTaskTargetReserved);
 
 } // namespace sunrise::state::activity_sdk::format
+

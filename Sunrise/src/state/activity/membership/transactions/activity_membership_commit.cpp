@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "../../../runtime/storage/internal.h"
+#include "../../events/activity_event_selection.h"
 #include "../activity_membership_query.h"
 #include "internal.h"
 
@@ -167,7 +168,18 @@ bool commit(PendingMutation& mutation, CommittedClientState* clientState) noexce
     } else {
         committed = false;
     }
+    const bool refreshEventSelection =
+        committed && prepared.kind == MutationKind::identity;
+
     ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+
+    // A membership identity commit is the fresh activity-join boundary. Promote the Events
+    // page's pending roster selection here, after releasing the root State lock, so the roster
+    // built for the new Tower/Farm instance sees the newly saved withheld-key set.
+    if (refreshEventSelection) {
+        events::reload();
+    }
+
     return committed;
 }
 

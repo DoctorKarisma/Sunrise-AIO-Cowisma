@@ -7,6 +7,7 @@
 #include <optional>
 #include <span>
 
+#include "../../core/logging/log.h"
 #include "../../state/build_data/runtime.h"
 #include "../activity/host_runtime.h"
 #include "internal.h"
@@ -211,47 +212,84 @@ squad_override_available_locked(const Session& session,
                                 const activity::host::ScriptableTarget& target,
                                 const layouts::RosterGroup* stateLocalRosterGroup,
                                 std::uint64_t expectedGeneration) noexcept {
-    if (expectedGeneration == 0 || session.activity.bindingGeneration != expectedGeneration
-        || target.slotType != middleware::bap::activity_message::squad_auth::kSlotType
-        || target.authSchema != middleware::bap::activity_message::squad_auth::kSchema
-        || (target.stateLocalRoster
-            && !valid_state_local_squad_target(target, stateLocalRosterGroup))
-        || (!target.stateLocalRoster
-            && (stateLocalRosterGroup != nullptr || target.stateLocalRegion >= 0))) {
+    const auto fail = [](const char* reason) noexcept {
+        core::log::write(core::log::Channel::server, core::log::Level::warn, reason);
         return false;
+    };
+
+    if (expectedGeneration == 0) {
+        return fail("ev=squad_availability_probe result=fail reason=expected_generation_zero");
     }
+    if (session.activity.bindingGeneration != expectedGeneration) {
+        return fail("ev=squad_availability_probe result=fail reason=binding_generation_mismatch");
+    }
+    if (target.slotType != middleware::bap::activity_message::squad_auth::kSlotType) {
+        return fail("ev=squad_availability_probe result=fail reason=slot_type");
+    }
+    if (target.authSchema != middleware::bap::activity_message::squad_auth::kSchema) {
+        return fail("ev=squad_availability_probe result=fail reason=auth_schema");
+    }
+    if (target.stateLocalRoster && !valid_state_local_squad_target(target, stateLocalRosterGroup)) {
+        return fail("ev=squad_availability_probe result=fail reason=invalid_state_local_target");
+    }
+    if (!target.stateLocalRoster
+        && (stateLocalRosterGroup != nullptr || target.stateLocalRegion >= 0)) {
+        return fail("ev=squad_availability_probe result=fail reason=canonical_target_shape");
+    }
+
     layouts::Definition layout{};
     if (!session_scenario_layout(session, layout)) {
-        return false;
+        return fail("ev=squad_availability_probe result=fail reason=no_scenario_layout");
     }
+
     const std::size_t canonicalGroups =
         std::size_t{layout.rosterGroupCount} + std::size_t{layout.bubbleGroupCount};
-    if (canonicalGroups == 0 || canonicalGroups > roster_message::kPublishedGroupCapacity) {
-        return false;
+    if (canonicalGroups == 0) {
+        return fail("ev=squad_availability_probe result=fail reason=no_canonical_groups");
     }
+    if (canonicalGroups > roster_message::kPublishedGroupCapacity) {
+        return fail("ev=squad_availability_probe result=fail reason=canonical_group_capacity");
+    }
+
     const std::int32_t selectedRegion = selected_region_index_locked(session);
     const SquadOverrideLease& lease = session.activitySquadOverride;
+
     if (!lease.active) {
         const layouts::RosterGroup* const pendingGroup =
             target.stateLocalRoster ? stateLocalRosterGroup : nullptr;
+
         if (!squad_override_capacity::available(layout,
                                                 nullptr,
                                                 pendingGroup,
                                                 target.stateLocalRoster,
                                                 target.stateLocalRegion,
                                                 selectedRegion)) {
-            return false;
+            return fail("ev=squad_availability_probe result=fail reason=capacity_initial");
         }
+
         if (!target.stateLocalRoster) {
             return true;
         }
-        return canonicalGroups < roster_message::kPublishedGroupCapacity
-               && generated_key_is_unique(layout, target.registryKey)
-               && generated_bubble_has_capacity(layout, nullptr, target.stateLocalRegion);
+
+        if (canonicalGroups >= roster_message::kPublishedGroupCapacity) {
+            return fail(
+                "ev=squad_availability_probe result=fail reason=generated_group_capacity_initial");
+        }
+        if (!generated_key_is_unique(layout, target.registryKey)) {
+            return fail(
+                "ev=squad_availability_probe result=fail reason=generated_key_not_unique_initial");
+        }
+        if (!generated_bubble_has_capacity(layout, nullptr, target.stateLocalRegion)) {
+            return fail(
+                "ev=squad_availability_probe result=fail reason=generated_bubble_capacity_initial");
+        }
+        return true;
     }
+
     if (!valid_squad_override_lease(lease, expectedGeneration)) {
-        return false;
+        return fail("ev=squad_availability_probe result=fail reason=invalid_existing_lease");
     }
+
     std::size_t stateLocalGroups = 0;
     for (std::size_t index = 0; index < lease.groupCount; ++index) {
         const RetainedSquadGroup& group = lease.groups[index];
@@ -259,53 +297,84 @@ squad_override_available_locked(const Session& session,
             ++stateLocalGroups;
         }
     }
+
     if (canonicalGroups + stateLocalGroups > roster_message::kPublishedGroupCapacity) {
-        return false;
+        return fail("ev=squad_availability_probe result=fail reason=combined_group_capacity");
     }
+
     const std::size_t groupIndex = retained_squad_group(lease, target);
     const layouts::RosterGroup* const pendingGroup =
         target.stateLocalRoster && groupIndex == lease.groupCount ? stateLocalRosterGroup : nullptr;
+
     if (!squad_override_capacity::available(layout,
                                             &lease,
                                             pendingGroup,
                                             target.stateLocalRoster,
                                             target.stateLocalRegion,
                                             selectedRegion)) {
-        return false;
+        return fail("ev=squad_availability_probe result=fail reason=capacity_existing_lease");
     }
+
     if (groupIndex < lease.groupCount) {
         const RetainedSquadGroup& group = lease.groups[groupIndex];
+
         if (target.stateLocalRoster
             && !same_scriptable_group(group.stateLocalRosterGroup, *stateLocalRosterGroup)) {
-            return false;
+            return fail(
+                "ev=squad_availability_probe result=fail reason=state_local_group_mismatch");
         }
+
         if (retained_squad_target(lease, groupIndex, target)) {
             return true;
         }
-        return lease.authCount < lease.authBodies.size()
-               && (!target.stateLocalRoster
-                   || group.authCount < group.stateLocalRosterGroup.slotCount);
+
+        if (lease.authCount >= lease.authBodies.size()) {
+            return fail(
+                "ev=squad_availability_probe result=fail reason=auth_body_capacity_existing_group");
+        }
+
+        if (target.stateLocalRoster && group.authCount >= group.stateLocalRosterGroup.slotCount) {
+            return fail("ev=squad_availability_probe result=fail reason=state_local_slot_capacity");
+        }
+
+        return true;
     }
+
     if (lease.authCount >= lease.authBodies.size()) {
-        return false;
+        return fail("ev=squad_availability_probe result=fail reason=auth_body_capacity_new_group");
     }
+
     if (!target.stateLocalRoster) {
-        return lease.groupCount < lease.groups.size();
+        if (lease.groupCount >= lease.groups.size()) {
+            return fail("ev=squad_availability_probe result=fail reason=retained_group_capacity");
+        }
+        return true;
     }
-    if (stateLocalGroups != lease.groupCount
-        || canonicalGroups + stateLocalGroups >= roster_message::kPublishedGroupCapacity
-        || !generated_key_is_unique(layout, target.registryKey)) {
-        return false;
+
+    // Mixed retained leases are valid: canonical groups stay in the authored roster while
+    // state-local Lua groups are appended/activated separately by build_roster_snapshot().
+    // Do not reject a new Lua/state-local group merely because the lease already contains
+    // canonical retained groups.
+    if (canonicalGroups + stateLocalGroups >= roster_message::kPublishedGroupCapacity) {
+        return fail(
+            "ev=squad_availability_probe result=fail reason=generated_group_capacity_existing");
+    }
+    if (!generated_key_is_unique(layout, target.registryKey)) {
+        return fail(
+            "ev=squad_availability_probe result=fail reason=generated_key_not_unique_existing");
     }
     if (!generated_bubble_has_capacity(layout, &lease, target.stateLocalRegion)) {
-        return false;
+        return fail(
+            "ev=squad_availability_probe result=fail reason=generated_bubble_capacity_existing");
     }
+
     for (std::size_t index = 0; index < lease.groupCount; ++index) {
         const RetainedSquadGroup& group = lease.groups[index];
         if (group.scopeTarget.registryKey == target.registryKey) {
-            return false;
+            return fail("ev=squad_availability_probe result=fail reason=duplicate_registry_key");
         }
     }
+
     return true;
 }
 
@@ -328,21 +397,60 @@ bool request_activity_squad_override(
     std::size_t linkCount = 0;
     const Session* const session = unique_activity_link_locked(binding, linkCount);
     const std::int32_t region = session != nullptr ? selected_region_index_locked(*session) : -1;
-    const bool queued = expectedRegion >= 0 && expectedGeneration != 0 && session != nullptr
-                        && session->activity.bindingGeneration == expectedGeneration
-                        && squad_override_available_locked(
-                            *session, target, stateLocalRosterGroup, expectedGeneration)
-                        && region == expectedRegion
-                        && activity::host::request_squad_override(binding,
-                                                                  target,
-                                                                  stateLocalRosterGroup,
-                                                                  requestedCounts,
-                                                                  mode,
-                                                                  expectedGeneration,
-                                                                  nameHash,
-                                                                  reservation,
-                                                                  authoredProfile,
-                                                                  squadRetirement);
+
+    if (expectedRegion < 0) {
+        core::log::write(core::log::Channel::server,
+                         core::log::Level::warn,
+                         "ev=squad_override_probe result=fail reason=expected_region_invalid");
+        return false;
+    }
+    if (expectedGeneration == 0) {
+        core::log::write(core::log::Channel::server,
+                         core::log::Level::warn,
+                         "ev=squad_override_probe result=fail reason=expected_generation_zero");
+        return false;
+    }
+    if (session == nullptr) {
+        core::log::write(core::log::Channel::server,
+                         core::log::Level::warn,
+                         "ev=squad_override_probe result=fail reason=no_unique_activity_link");
+        return false;
+    }
+    if (session->activity.bindingGeneration != expectedGeneration) {
+        core::log::write(core::log::Channel::server,
+                         core::log::Level::warn,
+                         "ev=squad_override_probe result=fail reason=generation_mismatch");
+        return false;
+    }
+    if (!squad_override_available_locked(
+            *session, target, stateLocalRosterGroup, expectedGeneration)) {
+        core::log::write(core::log::Channel::server,
+                         core::log::Level::warn,
+                         "ev=squad_override_probe result=fail reason=availability");
+        return false;
+    }
+    if (region != expectedRegion) {
+        core::log::write(core::log::Channel::server,
+                         core::log::Level::warn,
+                         "ev=squad_override_probe result=fail reason=region_mismatch");
+        return false;
+    }
+
+    const bool queued = activity::host::request_squad_override(binding,
+                                                               target,
+                                                               stateLocalRosterGroup,
+                                                               requestedCounts,
+                                                               mode,
+                                                               expectedGeneration,
+                                                               nameHash,
+                                                               reservation,
+                                                               authoredProfile,
+                                                               squadRetirement);
+    if (!queued) {
+        core::log::write(core::log::Channel::server,
+                         core::log::Level::warn,
+                         "ev=squad_override_probe result=fail reason=host_request");
+    }
     return queued;
 }
 

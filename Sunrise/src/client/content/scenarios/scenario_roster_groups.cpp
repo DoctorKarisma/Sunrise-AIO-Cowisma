@@ -101,6 +101,13 @@ struct ChainReadContext {
             }
             ++storage.exits.handles;
             if (!follow_handle(source, scratch, storage, handle, registryKey)) {
+                // Tower/Farm seasonal event groups are known to have one descriptor-chain
+                // handle that does not resolve completely. Keep the descriptors recovered from
+                // the other handles for those known event keys only; ordinary roster groups
+                // remain strict and still fail the whole collection on an incomplete chain.
+                if (tables::is_event_roster_key(registryKey)) {
+                    continue;
+                }
                 return false;
             }
         }
@@ -243,6 +250,14 @@ void report_placement(std::uint32_t destinationTag,
 
 } // namespace
 
+std::uint32_t memoised_object_key(const RosterStorage& storage, std::uint32_t objectTag) noexcept {
+    const std::size_t slot = memo_slot(storage, objectTag);
+    if (slot == kObjectMemoCapacity || storage.memo[slot].tag != objectTag) {
+        return 0;
+    }
+    return storage.memo[slot].registryKey;
+}
+
 /**
  * Finds the roster group of one placed object, reading it only the first time it is seen.
  * @param source Package directory and borrowed block keys.
@@ -271,6 +286,7 @@ bool resolve_object(const reader::Source& source,
         return true;
     }
     storage.memo[slot].tag = objectTag;
+    storage.memo[slot].registryKey = 0;
     storage.memo[slot].group = kNotARosterGroup;
     ++storage.reads;
     if (!reader::read_tag(source, scratch, objectTag, storage.object)) {
@@ -285,12 +301,17 @@ bool resolve_object(const reader::Source& source,
 
     layouts::RosterGroup candidate{};
     tables::Array declared{};
-    if (!tables::object_key(storage.object, candidate.registryKey) || candidate.registryKey == 0
-        || !tables::carries_roster_slot(storage.object)
+    if (tables::object_key(storage.object, candidate.registryKey)) {
+        storage.memo[slot].registryKey = candidate.registryKey;
+    }
+    if (candidate.registryKey == 0
+        || !(tables::carries_roster_slot(storage.object)
+             || tables::is_event_roster_key(candidate.registryKey))
         || !tables::object_slots(storage.object, declared) || declared.count == 0
         || declared.count > layouts::kRosterSlotCapacity) {
         return true;
     }
+
     storage.slotCount = 0;
     storage.slotsOverflowed = false;
     storage.exits = {};

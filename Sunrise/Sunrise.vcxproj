@@ -261,6 +261,7 @@
     <ClCompile Include="src\client\executable\image.cpp" />
     <ClCompile Include="src\client\memory\current_process_memory.cpp" />
     <ClCompile Include="src\client\hooks\network\investment\investment_derived_rebuild.cpp" />
+    <ClCompile Include="src\client\hooks\network\investment\investment_refetch.cpp" />
     <ClCompile Include="src\client\hooks\network\investment\investment_family5_rearm.cpp" />
     <ClCompile Include="src\client\hooks\package_trust\package_trust_bypass.cpp" />
     <ClCompile Include="src\client\hooks\bitmap\bitmap_hook_lifecycle.cpp" />
@@ -584,6 +585,8 @@
     <ClCompile Include="src\state\gameplay\external\replication_view_receptor.cpp" />
     <ClCompile Include="src\state\gameplay\external\replication_world_state.cpp" />
     <ClCompile Include="src\state\activity\activity_session_lookup.cpp" />
+    <ClCompile Include="src\state\activity\events\activity_event_selection.cpp" />
+    <ClCompile Include="src\state\investment\investment_overrides.cpp" />
     <ClCompile Include="src\state\activity\mission\activity_mission_state.cpp" />
     <ClCompile Include="src\state\activity\mission\activity_mission_publication.cpp" />
     <ClCompile Include="src\state\activity\mission\activity_mission_intents.cpp" />
@@ -861,6 +864,7 @@
     <ClCompile Include="src\server\activity\host_runtime_mission_inputs.cpp" />
     <ClCompile Include="src\server\bap\encrypted\push\activity\activity_incident_push.cpp" />
     <ClCompile Include="src\server\ui\runtime\server_ui_module_runtime.cpp" />
+    <ClCompile Include="src\server\ui\tower_events\tower_events_panel.cpp" />
     <ClCompile Include="src\server\ui\activity_host\activity_host_panel.cpp" />
     <ClCompile Include="src\server\ui\activity_host\activity_host_sdk_view.cpp" />
     <ClCompile Include="src\server\ui\activity_host\activity_host_sdk_mission_view.cpp" />
@@ -904,6 +908,8 @@
     <ClCompile Include="src\server\bap\encrypted\reply\bap_encrypted_reply.cpp" />
     <ClCompile Include="src\server\bap\encrypted\activity_host_manager\activity_host_manager_route.cpp" />
     <ClCompile Include="src\server\bap\encrypted\activity_message\activity_message_route.cpp" />
+	<ClCompile Include="src\server\bap\encrypted\activity_message\festival_pickups.cpp" />
+	<ClCompile Include="src\middleware\bap\activity_message\loot_pickup.cpp" />
     <ClCompile Include="src\server\bap\encrypted\activity_message\activity_message_framing.cpp" />
     <ClCompile Include="src\server\bap\encrypted\activity_message\patch_epoch\activity_patch_epoch_route.cpp" />
     <ClCompile Include="src\server\bap\encrypted\activity_message\membership\activity_membership_route.cpp" />
@@ -1459,6 +1465,11 @@
     <ClInclude Include="src\state\equipment\light\calculation\equipment_light_calculation.h" />
     <ClInclude Include="src\state\equipment\light\resolution\configured_equipment_light_resolver.h" />
     <ClInclude Include="src\state\investment\investment.h" />
+    <ClInclude Include="src\state\investment\investment_overrides.h" />
+    <ClInclude Include="src\client\hooks\network\investment\investment_refetch.h" />
+    <ClInclude Include="src\server\ui\tower_events\tower_events_panel.h" />
+    <ClInclude Include="src\state\activity\events\definition.h" />
+    <ClInclude Include="src\state\activity\events\activity_event_selection.h" />
     <ClInclude Include="src\state\content\content_catalog.h" />
     <ClInclude Include="src\state\content_manifest\cache\format.h" />
     <ClInclude Include="src\state\content_manifest\cache\internal.h" />
@@ -1614,6 +1625,8 @@
     <ClInclude Include="src\server\bap\encrypted\activity_host_manager\activity_host_manager_route.h" />
     <ClInclude Include="src\server\bap\encrypted\activity_message\definition.h" />
     <ClInclude Include="src\server\bap\encrypted\activity_message\activity_message_route.h" />
+	<ClInclude Include="src\server\bap\encrypted\activity_message\festival_pickups.h" />
+	<ClInclude Include="src\middleware\bap\activity_message\loot_pickup.h" />
     <ClInclude Include="src\server\bap\encrypted\activity_message\activity_message_route_internal.h" />
     <ClInclude Include="src\server\bap\encrypted\activity_message\patch_epoch\activity_patch_epoch_route.h" />
     <ClInclude Include="src\server\bap\encrypted\activity_message\membership\activity_membership_route.h" />

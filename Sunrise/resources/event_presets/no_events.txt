@@ -1,0 +1,16 @@
+# NO EVENTS: bare Tower, every seasonal group and carrier withheld.
+# Copy this file over roster_exclude_keys.txt, then go to orbit and load back into the Tower (or use the Events page in the Sunrise menu). No relaunch, no rebuild, no cache clear. Keys listed here are WITHHELD.
+0x00ACD208
+0xC140FF19   # dawning (Farm)
+0x2F2B8D00
+0x6E087824
+0x7C6DE64F
+0xFC6B8707
+0xEE34BBAB
+0x6D3740C6
+0x27060E6C
+0x6CEFCC01
+0x4488AD94   # crimson_days (Farm)
+0xD5B68262
+0xDA989AA3   # dawning rink: ball, goals, scoreboards (Hangar)
+0x9052672C

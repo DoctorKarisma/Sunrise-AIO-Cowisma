@@ -9,6 +9,7 @@
 #include "../../../../../core/logging/log.h"
 #include "../../../../../middleware/content/packages/tables/region_reader.h"
 #include "../../../../../state/account/account_state.h"
+#include "../../../../../state/activity/events/activity_event_selection.h"
 #include "../../../../../state/activity/membership/activity_membership_query.h"
 #include "../../../../../state/build_data/runtime.h"
 #include "internal.h"
@@ -315,13 +316,28 @@ same_retained_scope(const RetainedSquadGroup& group,
         || groupCount > roster.groups.size()) {
         return false;
     }
+
+    // Build-data always keeps every discovered roster group. The Events selection is applied only
+    // here, while assembling the live roster for this join, so enabling an event later still has
+    // its group available without rebuilding the build-data cache.
+    std::size_t topLevelGroupCount = 0;
     for (std::size_t index = 0; index < layout.rosterGroupCount; ++index) {
-        if (!fill_group(layout.rosterGroups[index], scratch, index, roster)) {
+        if (!fill_group(layout.rosterGroups[index], scratch, topLevelGroupCount, roster)) {
             return false;
         }
+
+        const std::uint32_t key = scratch.rosterGroups[topLevelGroupCount].registryKey;
+        if (state::activity::events::find_key(key) != nullptr
+            && state::activity::events::withheld(key)) {
+            continue;
+        }
+
+        ++topLevelGroupCount;
     }
-    // The per-bubble groups follow the top-level ones in the same array. Phase 2 seeds every
-    // group the body registers, and the client holds its apply back until they are all in.
+
+    // Per-bubble groups are compacted after the filtered top-level half. Baseline groups never
+    // appear in the Events map, so they always survive; only the authored seasonal keys can be
+    // withheld by the Events page.
     std::array<std::uint64_t, layouts::kDestinationBubbleGroupCapacity> bubbleMasks{};
     std::size_t bubbleGroupCount = 0;
     for (std::size_t index = 0; index < layout.bubbleGroupCount; ++index) {
@@ -329,19 +345,27 @@ same_retained_scope(const RetainedSquadGroup& group,
         if (mask == 0) {
             continue;
         }
-        if (!fill_group(layout.bubbleGroups[index],
-                        scratch,
-                        layout.rosterGroupCount + bubbleGroupCount,
-                        roster)) {
+
+        const std::size_t position = topLevelGroupCount + bubbleGroupCount;
+        if (!fill_group(layout.bubbleGroups[index], scratch, position, roster)) {
             return false;
         }
+
+        const std::uint32_t key = scratch.rosterGroups[position].registryKey;
+        if (state::activity::events::find_key(key) != nullptr
+            && state::activity::events::withheld(key)) {
+            continue;
+        }
+
         bubbleMasks[bubbleGroupCount] = mask;
         ++bubbleGroupCount;
     }
-    roster.topLevelGroupCount = layout.rosterGroupCount;
-    roster.groupCount = std::size_t{layout.rosterGroupCount} + bubbleGroupCount;
+
+    roster.topLevelGroupCount = topLevelGroupCount;
+    roster.groupCount = topLevelGroupCount + bubbleGroupCount;
     roster.bubbleSubBlocks =
         fill_sub_blocks(std::span(bubbleMasks).first(bubbleGroupCount), scratch, roster);
+
     // Only a top-level group can bind the player: its object is in every slice set, so the gate
     // reads it wherever the player is.
     for (std::size_t index = 0; index < roster.topLevelGroupCount && roster.playerKeyGroup == 0;
@@ -584,53 +608,120 @@ make_retained_squad_auth(const server::activity::host::PendingScriptableOverride
                                          std::uint16_t tableIndex,
                                          std::uint16_t slotOffset,
                                          bool stateLocalRosterTarget) noexcept {
+    static_cast<void>(layout);
+    // Baseline Tower vendor squad group: Banshee, Rahool, Postmaster, Shaxx, Tess, Zavala, Eva.
+    // It is deliberately retained in every Tower roster and is not an event.
+    constexpr std::uint32_t kTowerVendorSquadKey = 0x50CC9C7DU;
+
+    const auto log_install_fail = [&](std::string_view reason,
+                                      std::size_t rosterPosition) noexcept {
+        std::array<char, 384> line{};
+        const int written =
+            std::snprintf(line.data(),
+                          line.size(),
+                          "ev=activity stage=auth_install result=fail reason=%.*s "
+                          "key=0x%08X tag=0x%08X table=%u slot_offset=%u slot_index=%u "
+                          "slot_type=%u state_local=%u region=%d roster_pos=%zu groups=%zu",
+                          static_cast<int>(reason.size()),
+                          reason.data(),
+                          value.key,
+                          value.objectTag,
+                          static_cast<unsigned>(tableIndex),
+                          static_cast<unsigned>(slotOffset),
+                          static_cast<unsigned>(value.slotIndex),
+                          static_cast<unsigned>(value.slotType),
+                          stateLocalRosterTarget ? 1U : 0U,
+                          region.index,
+                          rosterPosition,
+                          snapshot.roster.groupCount);
+        if (written > 0) {
+            core::log::write(
+                core::log::Channel::server,
+                core::log::Level::warn,
+                {line.data(), (std::min)(static_cast<std::size_t>(written), line.size() - 1)});
+        }
+    };
+
+    // Diagnostic only: log which auth slots of the baseline Tower vendor group are actually
+    // installed. Comparing an Events-off Tower load against Dawning-on tells us whether Eva is an
+    // existing authored slot that becomes active with the event or whether no Eva auth is emitted.
+    if (value.key == kTowerVendorSquadKey) {
+        std::array<char, 224> line{};
+        const int written =
+            std::snprintf(line.data(),
+                          line.size(),
+                          "ev=tower_vendor_auth table=%u slot_offset=%u slot_index=%u slot_type=%u "
+                          "object_tag=0x%08X state_local=%u region=%d",
+                          static_cast<unsigned>(tableIndex),
+                          static_cast<unsigned>(slotOffset),
+                          static_cast<unsigned>(value.slotIndex),
+                          static_cast<unsigned>(value.slotType),
+                          value.objectTag,
+                          stateLocalRosterTarget ? 1U : 0U,
+                          region.index);
+        if (written > 0) {
+            core::log::write(
+                core::log::Channel::server,
+                core::log::Level::info,
+                {line.data(), (std::min)(static_cast<std::size_t>(written), line.size() - 1)});
+        }
+    }
+
     std::size_t rosterPosition = snapshot.roster.groupCount;
-    if (stateLocalRosterTarget) {
-        for (std::size_t index = 0; index < snapshot.roster.groupCount; ++index) {
-            const message::Group& group = snapshot.roster.groups[index];
-            if (group.key != value.key || group.objectTag != value.objectTag) {
-                continue;
-            }
-            if (rosterPosition != snapshot.roster.groupCount) {
-                return false;
-            }
-            rosterPosition = index;
-        }
-    }
-    for (std::size_t index = 0; !stateLocalRosterTarget && index < layout.rosterGroupCount;
-         ++index) {
-        if (layout.rosterGroups[index] == tableIndex) {
-            if (rosterPosition != snapshot.roster.groupCount) {
-                return false;
-            }
-            rosterPosition = index;
-        }
-    }
-    const std::uint32_t bubble =
-        region.index >= 0 ? static_cast<std::uint32_t>(region.index)
-                                / middleware::content::packages::tables::kSliceSetIndexFactor
-                          : layouts::kBubbleCapacity;
-    for (std::size_t index = 0; !stateLocalRosterTarget && index < layout.bubbleGroupCount;
-         ++index) {
-        if (layout.bubbleGroups[index] != tableIndex || bubble >= layouts::kBubbleCapacity
-            || (layout.bubbleGroupMasks[index] & (std::uint64_t{1} << bubble)) == 0) {
+
+    // Resolve the exact LIVE group first. Event filtering can compact the roster, so authored
+    // table ordinals are not reliable wire positions.
+    for (std::size_t index = 0; index < snapshot.roster.groupCount; ++index) {
+        const message::Group& group = snapshot.roster.groups[index];
+        if (group.key != value.key || group.objectTag != value.objectTag) {
             continue;
         }
+
         if (rosterPosition != snapshot.roster.groupCount) {
+            log_install_fail("duplicate_live_group", rosterPosition);
             return false;
         }
-        rosterPosition = layout.rosterGroupCount + index;
+
+        rosterPosition = index;
     }
+
     if (rosterPosition >= snapshot.roster.groupCount) {
+        log_install_fail("live_group_not_found", rosterPosition);
         return false;
     }
+
+    // The live roster is authoritative here. We already resolved an exact key/tag match above,
+    // so a retained Auth body may be installed even when the authored canonical bubble mask says
+    // this table row is inactive. Mission-script squad Auth can outlive that narrower authored
+    // mask across Tower region transitions while the client still has the exact group registered.
+    // The slot identity and Auth flag are validated below before anything is published.
+
     const layouts::RosterGroup& group = scratch.rosterGroups[rosterPosition];
-    if (slotOffset >= group.slotCount || group.objectTag != value.objectTag
-        || group.registryKey != value.key || group.slotTypes[slotOffset] != value.slotType
-        || group.slotIndices[slotOffset] != value.slotIndex
-        || (group.slotFlags[slotOffset] & message::kSlotAuthFlag) == 0) {
+    if (slotOffset >= group.slotCount) {
+        log_install_fail("slot_offset_out_of_range", rosterPosition);
         return false;
     }
+    if (group.objectTag != value.objectTag) {
+        log_install_fail("object_tag_mismatch", rosterPosition);
+        return false;
+    }
+    if (group.registryKey != value.key) {
+        log_install_fail("registry_key_mismatch", rosterPosition);
+        return false;
+    }
+    if (group.slotTypes[slotOffset] != value.slotType) {
+        log_install_fail("slot_type_mismatch", rosterPosition);
+        return false;
+    }
+    if (group.slotIndices[slotOffset] != value.slotIndex) {
+        log_install_fail("slot_index_mismatch", rosterPosition);
+        return false;
+    }
+    if ((group.slotFlags[slotOffset] & message::kSlotAuthFlag) == 0) {
+        log_install_fail("missing_auth_flag", rosterPosition);
+        return false;
+    }
+
     for (std::size_t index = 0; index < snapshot.authOverrides.size(); ++index) {
         const message::AuthOverride& retained = snapshot.authOverrides[index];
         if (retained.objectTag == value.objectTag && retained.key == value.key
@@ -639,10 +730,13 @@ make_retained_squad_auth(const server::activity::host::PendingScriptableOverride
             return true;
         }
     }
+
     const std::size_t overrideCount = snapshot.authOverrides.size();
     if (overrideCount >= scratch.rosterAuthOverrides.size()) {
+        log_install_fail("auth_override_capacity", rosterPosition);
         return false;
     }
+
     scratch.rosterAuthOverrides[overrideCount] = value;
     snapshot.authOverrides = std::span(scratch.rosterAuthOverrides).first(overrideCount + 1);
     return true;

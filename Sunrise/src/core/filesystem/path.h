@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstddef>
+#include <span>
 #include <string_view>
 
 namespace sunrise::core::path {
@@ -26,15 +27,34 @@ struct Buffer {
 
 /**
  * Resolves one Sunrise-owned file beside this DLL, creating any directory it needs.
- * The path is `<directory holding steam_api64.dll>\Sunrise\<relative>`.
- * The module is found from this function's own address, so no caller threads a handle down.
- * @param relative File name, optionally with one leading subdirectory such as `exports\x.txt`.
+ *
+ * Callers get `<directory holding steam_api64.dll>\Sunrise\<relative>`.
+ *
+ * @param relative File name, optionally with one leading subdirectory.
  * @param output Receives the full path.
- * @return True when the path fits and every directory in it exists or was created.
+ * @return True when the path fits and every required directory exists.
  */
 [[nodiscard]] bool artifact_file(std::wstring_view relative, Buffer& output) noexcept;
 
 /** Appends one suffix without exceeding fixed path storage. */
 [[nodiscard]] bool append(Buffer& path, std::wstring_view suffix) noexcept;
+
+/**
+ * Reads one Sunrise-owned text file whole, into caller storage, terminated.
+ *
+ * @param relative File name resolved through artifact_file().
+ * @param text Caller storage. One byte is reserved for the terminating NUL.
+ * @return True only when the file opened, fitted, and held at least one byte.
+ */
+[[nodiscard]] bool read_artifact_text(std::wstring_view relative, std::span<char> text) noexcept;
+
+/**
+ * Writes one Sunrise-owned text file whole, replacing what was there.
+ *
+ * @param relative File name resolved through artifact_file().
+ * @param text Bytes to write. No terminator is added.
+ * @return True when every byte reached the file.
+ */
+[[nodiscard]] bool write_artifact_text(std::wstring_view relative, std::string_view text) noexcept;
 
 } // namespace sunrise::core::path

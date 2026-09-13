@@ -1,0 +1,12 @@
+# DAWNING, whole Tower (Courtyard, Bazaar, Hangar; Bungie dressed no Dawning in the Annex).
+# Copy this file over roster_exclude_keys.txt, then go to orbit and load back into the Tower (or use the Events page in the Sunrise menu). No relaunch, no rebuild, no cache clear. Keys listed here are WITHHELD.
+# The Courtyard vendors' squad group (0x50CC9C7D) and the two sensor-only groups (0x08E64D48, 0x099B0342) are not events, show nothing on their own and are kept in every preset.
+0x27060E6C   # iron_banner (Courtyard)
+0x7C6DE64F   # festival_of_the_lost (Courtyard)
+0x6CEFCC01
+0x4488AD94   # crimson_days (Farm)   # crimson_days (Courtyard)
+0xD5B68262   # solstice (Courtyard)
+0xFC6B8707   # festival_of_the_lost (Bazaar)
+0xEE34BBAB   # festival_of_the_lost (Hangar)
+0x6D3740C6   # festival_of_the_lost (Annex)
+0x9052672C   # saint_14 / trials (Hangar)

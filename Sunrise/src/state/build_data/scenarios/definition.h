@@ -33,13 +33,13 @@ inline constexpr std::size_t kRosterGroupCapacity = 128;
 /** Slots on one roster group object. The widest installed group declares 1218. */
 inline constexpr std::size_t kRosterSlotCapacity = 1280;
 /** Roster groups one destination publishes. No installed destination reaches more than two. */
-inline constexpr std::size_t kDestinationGroupCapacity = 4;
+inline constexpr std::size_t kDestinationGroupCapacity = 48;
 /**
  * Roster groups one destination publishes per bubble.
  * A group qualifies only when it is in some of the destination's slice sets and not all.
  * So the set is small: the widest measured destination reaches one of its six keys that way.
  */
-inline constexpr std::size_t kDestinationBubbleGroupCapacity = 4;
+inline constexpr std::size_t kDestinationBubbleGroupCapacity = 48;
 /** A per-bubble group's bubble mask, one bit per bubble, as it is stored on disk. */
 inline constexpr std::size_t kBubbleMaskBytes = kBubbleCapacity / 8;
 /** Slot flag bit for a slot whose type declares a sense schema. */

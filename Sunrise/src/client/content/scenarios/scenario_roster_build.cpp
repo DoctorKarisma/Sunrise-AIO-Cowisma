@@ -80,6 +80,15 @@ void note_candidate(Walk& walk,
     }
 }
 
+[[nodiscard]] bool known_group_key(const RosterStorage& storage, std::uint32_t registryKey) noexcept {
+    for (std::size_t index = 0; index < storage.groupCount; ++index) {
+        if (storage.groups[index].registryKey == registryKey) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /**
  * Walks one slice-set state to every placed object its registry names.
  * @param source Package directory and borrowed block keys.
@@ -111,6 +120,12 @@ void note_candidate(Walk& walk,
                 return false;
             }
             if (group == kNotARosterGroup) {
+                const std::uint32_t carried = memoised_object_key(storage, objectTag);
+                if (carried != 0 && tables::is_event_roster_key(carried)
+                    && known_group_key(storage, carried)
+                    && !tables::observe_roster_key(walk.intersection, sliceSetIndex, carried)) {
+                    return true;
+                }
                 continue;
             }
             note_candidate(walk, storage, group, descriptor == 0);

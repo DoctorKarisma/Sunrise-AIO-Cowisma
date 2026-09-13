@@ -4,6 +4,7 @@
 #include <limits>
 #include <string_view>
 
+#include "../../../state/activity/events/activity_event_selection.h"
 #include "../../../state/activity/membership/definition.h"
 #include "mission_script_lua_internal.h"
 #include "mission_script_lua_names.h"
@@ -23,6 +24,93 @@ namespace {
     }
     push_handle(state, kSquadMetatable, SquadHandle{definition.localRow});
     return 1;
+}
+
+/**
+ * Reports whether one Tower event is enabled in the event selection published for the current
+ * activity join.
+ *
+ * Lua:
+ *   context:event_active("dawning")
+ *   context:event_active("festival_of_the_lost")
+ */
+[[nodiscard]] int context_event_active(lua_State* state) {
+    static_cast<void>(luaL_checkudata(state, 1, kContextMetatable));
+
+    const std::string_view name = lua_string_view(state, 2);
+
+    namespace events = ::sunrise::state::activity::events;
+
+    events::Event event = events::Event::count;
+
+    if (name == "festival" || name == "festival_of_the_lost") {
+        event = events::Event::festivalOfTheLost;
+    } else if (name == "dawning") {
+        event = events::Event::dawning;
+    } else if (name == "iron_banner") {
+        event = events::Event::ironBanner;
+    } else if (name == "crimson" || name == "crimson_days") {
+        event = events::Event::crimsonDays;
+    } else if (name == "solstice") {
+        event = events::Event::solstice;
+    } else if (name == "trials" || name == "trials_saint14" || name == "saint14") {
+        event = events::Event::trialsSaint14;
+    } else {
+        return luaL_error(state, "unknown Tower event");
+    }
+
+    lua_pushboolean(state, events::enabled(event) ? 1 : 0);
+    return 1;
+}
+
+/**
+ * Resolves one authored squad by its native SDK row.
+ *
+ * Normal context:squad(integer) accepts the generated Lua/local row, not the SDK's native row.
+ * The Activity SDK panel reports native rows such as 46311, so this helper bridges that exact row
+ * to the current generated mission catalog without depending on an ambiguous squad name.
+ *
+ * Lua:
+ *   context:squad_native(46311)
+ */
+[[nodiscard]] int context_squad_native(lua_State* state) {
+    static_cast<void>(luaL_checkudata(state, 1, kContextMetatable));
+
+    const lua_Integer requested = luaL_checkinteger(state, 2);
+    if (requested <= 0
+        || static_cast<std::uint64_t>(requested)
+               > static_cast<std::uint64_t>((std::numeric_limits<std::uint32_t>::max)())) {
+        return luaL_error(state, "native squad row is outside u32");
+    }
+
+    Impl* const impl = impl_from_state(state);
+    if (impl == nullptr || impl->definitions.squadCount == nullptr
+        || impl->definitions.resolveSquadRow == nullptr) {
+        return luaL_error(state, "activity squad catalog is unavailable");
+    }
+
+    const std::uint32_t nativeRow = static_cast<std::uint32_t>(requested);
+    const std::size_t count = impl->definitions.squadCount(impl->definitions.context);
+
+    for (std::size_t localRow = 1; localRow <= count; ++localRow) {
+        if (localRow > (std::numeric_limits<std::uint32_t>::max)()) {
+            break;
+        }
+
+        SquadDefinition definition{};
+        if (!impl->definitions.resolveSquadRow(
+                impl->definitions.context, static_cast<std::uint32_t>(localRow), definition)) {
+            continue;
+        }
+        if (definition.nativeRow != nativeRow) {
+            continue;
+        }
+
+        push_handle(state, kSquadMetatable, SquadHandle{definition.localRow});
+        return 1;
+    }
+
+    return luaL_error(state, "unknown activity squad native row");
 }
 
 /**
@@ -227,6 +315,10 @@ resolve_message_name(lua_State* state, std::string_view name, ActivityMessageDef
         push_peers(state);
     } else if (key == "squad") {
         lua_pushcfunction(state, &context_squad);
+    } else if (key == "squad_native") {
+        lua_pushcfunction(state, &context_squad_native);
+    } else if (key == "event_active") {
+        lua_pushcfunction(state, &context_event_active);
     } else if (key == "scene") {
         lua_pushcfunction(state, &context_scene);
     } else if (key == "slot") {
