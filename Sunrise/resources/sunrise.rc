@@ -6,6 +6,12 @@ IDR_DEFAULT_SETTINGS RCDATA "default_settings.json"
 IDR_IMGUI_LICENSE RCDATA "../vendor/imgui/LICENSE.txt"
 IDR_DETOURS_LICENSE RCDATA "../vendor/detours/LICENSE.md"
 IDR_LUA_LICENSE RCDATA "../vendor/lua/LICENSE"
+
+/** Gear Editor investment metadata and icon resources. */
+IDR_ITEM_NAMES RCDATA "item_names.bin"
+IDR_ITEM_ICONS RCDATA "item_icons.pack"
+IDR_ITEM_RARITY RCDATA "item_rarity.bin"
+
 IDR_BOOTFLOW_TEXTURE_80A145FF RCDATA "bootflow/texture_80A145FF.dds"
 IDR_BOOTFLOW_TEXTURE_80A14601 RCDATA "bootflow/texture_80A14601.dds"
 IDR_BOOTFLOW_TEXTURE_80A14607 RCDATA "bootflow/texture_80A14607.dds"
@@ -24,6 +30,7 @@ IDR_BOOTFLOW_TEXTURE_80A14631 RCDATA "bootflow/texture_80A14631.dds"
 IDR_BOOTFLOW_TEXTURE_80A14633 RCDATA "bootflow/texture_80A14633.dds"
 IDR_BOOTFLOW_TEXTURE_80A14636 RCDATA "bootflow/texture_80A14636.dds"
 IDR_BOOTFLOW_TEXTURE_80A146D5 RCDATA "bootflow/texture_80A146D5.dds"
+
 IDR_LOGO_SHEET RCDATA "logo_sheet.png"
 
 VS_VERSION_INFO VERSIONINFO

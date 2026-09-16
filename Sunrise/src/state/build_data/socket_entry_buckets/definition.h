@@ -12,7 +12,6 @@ namespace sunrise::state::build_data::socket_entry_buckets {
 inline constexpr std::size_t kDefinitionCapacity = 32;
 /** Marks an entry whose selector chain never reaches one of the 12 semantic ability buckets. */
 inline constexpr std::uint8_t kNoDestinationBucket = 0xFF;
-
 /**
  * One socket-entry list's resolved ability-bucket destination per entry.
  * A pick's table position does not say which slot it fills; only its selector chain does. Computed
@@ -24,3 +23,4 @@ struct Definition {
 };
 
 } // namespace sunrise::state::build_data::socket_entry_buckets
+

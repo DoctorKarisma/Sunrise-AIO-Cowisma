@@ -244,3 +244,4 @@ bool build_character_abilities(
 }
 
 } // namespace sunrise::client::content::items::packages
+

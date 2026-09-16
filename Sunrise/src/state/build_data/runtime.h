@@ -196,6 +196,12 @@ publish_socket_plug_rules(std::span<const items::socket_plugs::Rule> rules,
                           std::span<const items::socket_plugs::Member> members) noexcept;
 
 /**
+ * Answers whether one installed plug definition exists anywhere in the ordinary socket relation.
+ * Missing or malformed relations fail closed.
+ */
+[[nodiscard]] bool is_socket_plug_valid(std::uint16_t plugDefinitionIndex) noexcept;
+
+/**
  * Answers whether one installed plug definition is valid for one exact ordinary socket lane.
  * Missing or malformed relations fail closed.
  */
@@ -533,6 +539,7 @@ void invalidate_ability_buckets() noexcept;
                                             std::uint8_t entryIndex,
                                             std::uint8_t& bucket) noexcept;
 
+
 /** @return True when the installed investment constants are in State. */
 [[nodiscard]] bool investment_constants_ready() noexcept;
 
@@ -757,3 +764,4 @@ publish_vendor_catalog(std::span<const vendors::IndexEntry> index,
 [[nodiscard]] bool persist() noexcept;
 
 } // namespace sunrise::state::build_data
+

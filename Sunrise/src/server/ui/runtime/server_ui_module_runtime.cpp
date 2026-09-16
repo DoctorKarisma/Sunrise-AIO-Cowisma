@@ -7,6 +7,7 @@
 #include "../activity_host/activity_host_panel.h"
 #include "../activity_override/activity_override_panel.h"
 #include "../tower_events/tower_events_panel.h"
+#include "../weapon_editor/weapon_editor_panel.h"
 
 namespace sunrise::server::ui::runtime {
 namespace {
@@ -26,9 +27,15 @@ constexpr std::string_view kEventsStableId = "server.tower_events";
 /** Short menu label for the Tower Events page. */
 constexpr std::string_view kEventsDisplayName = "Events";
 
+/** A namespaced stable ID for the Gear Editor page. */
+constexpr std::string_view kWeaponEditorStableId = "server.weapon_editor";
+/** Short menu label for the Gear Editor page. */
+constexpr std::string_view kWeaponEditorDisplayName = "Gear Editor";
+
 core::ui::modules::registry::PageRegistration g_overridePage;
 core::ui::modules::registry::PageRegistration g_hostPage;
 core::ui::modules::registry::PageRegistration g_eventsPage;
+core::ui::modules::registry::PageRegistration g_weaponEditorPage;
 
 } // namespace
 
@@ -60,11 +67,22 @@ bool initialize() noexcept {
         return false;
     }
 
+    if (!g_weaponEditorPage.acquire(core::ui::modules::Owner::server,
+                                    kWeaponEditorStableId,
+                                    kWeaponEditorDisplayName,
+                                    &weapon_editor::draw)) {
+        g_eventsPage.release();
+        g_hostPage.release();
+        g_overridePage.release();
+        return false;
+    }
+
     return true;
 }
 
 /** Removes the Server module's pages from the Core UI registry. */
 void shutdown() noexcept {
+    g_weaponEditorPage.release();
     g_eventsPage.release();
     g_hostPage.release();
     g_overridePage.release();

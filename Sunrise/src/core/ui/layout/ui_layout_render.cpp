@@ -21,6 +21,27 @@ namespace {
 constexpr float kPreferredWindowWidth = 920.0F;
 /** The authored height fits a 720p viewport with game space left around it. */
 constexpr float kPreferredWindowHeight = 580.0F;
+
+/** Gear Editor benefits from considerably more horizontal and vertical room. */
+constexpr float kGearEditorDefaultWidth = 1200.0F;
+/** Default Gear Editor height. */
+constexpr float kGearEditorDefaultHeight = 760.0F;
+
+/** Gear Editor cannot be reduced below the normal Sunrise authored width. */
+constexpr float kGearEditorMinimumWidth = kPreferredWindowWidth;
+/** Gear Editor cannot be reduced below the normal Sunrise authored height. */
+constexpr float kGearEditorMinimumHeight = kPreferredWindowHeight;
+
+/** Upper authored Gear Editor width. The viewport still provides the final clamp. */
+constexpr float kGearEditorMaximumWidth = 1800.0F;
+/** Upper authored Gear Editor height. The viewport still provides the final clamp. */
+constexpr float kGearEditorMaximumHeight = 1100.0F;
+
+/** One press changes Gear Editor width by this many authored pixels. */
+constexpr float kGearEditorWidthStep = 100.0F;
+/** One press changes Gear Editor height by this many authored pixels. */
+constexpr float kGearEditorHeightStep = 60.0F;
+
 /** A 420-pixel minimum keeps the two columns from overlapping. */
 constexpr float kMinimumWindowWidth = 420.0F;
 /** A 300-pixel minimum keeps the navigation list and credits footer. */
@@ -35,30 +56,50 @@ constexpr float kNavigationWidth = 180.0F;
 constexpr float kAutomaticWidth = 0.0F;
 /** A half-axis pivot centers the window on both viewport axes. */
 constexpr ImVec2 kCenterPivot{0.5F, 0.5F};
+
 /** The main surface has no title bar and is left out of saved Dear ImGui state. */
 constexpr ImGuiWindowFlags kMainWindowFlags =
     ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings
     | ImGuiWindowFlags_NoTitleBar;
+
 /** One trailing null byte turns a descriptor name into a component label. */
 constexpr std::size_t kLabelTerminatorBytes = 1;
+
 /** Fixed animation key. Every visibility-lane user needs its own, so keep these distinct. */
 constexpr ImGuiID kSurfaceAnimationId = 1;
+
 /** Response rates for opening and closing, in the same range as the other components. */
 constexpr animation::transition::Rates kVisibilityRates{16.0F, 14.0F};
+
 /** A closed surface has finished its transition and draws nothing. */
 constexpr float kClosedProgress = 0.0F;
 /** The surface grows from this fraction of its size while it opens. */
 constexpr float kOpeningScale = 0.96F;
 /** Full size, reached when the surface is fully open. */
 constexpr float kOpenScale = 1.0F;
+
 /** 34 authored pixels give the title logo presence without crowding the title row. */
 constexpr float kTitleLogoExtent = 34.0F;
 /** The title is drawn at this multiple of the body text, so it holds the logo's row. */
 constexpr float kTitleTextRatio = 1.5F;
 /** Half a difference centers one item against a taller one. */
 constexpr float kHalfExtent = 2.0F;
+
 /** The surface names the tool with the same wordmark the HUD card carries. */
 constexpr char kTitle[] = "SUNRISE";
+
+/** Gear Editor's registered display label. */
+constexpr std::string_view kGearEditorDisplayName = "Gear Editor";
+
+/**
+ * Gear Editor owns a separate authored window size.
+ *
+ * These values intentionally live only in UI runtime state. Switching modules does not destroy
+ * them, so returning to Gear Editor restores its previous size while every other page continues
+ * using the normal Sunrise size.
+ */
+float g_gearEditorWindowWidth = kGearEditorDefaultWidth;
+float g_gearEditorWindowHeight = kGearEditorDefaultHeight;
 
 /**
  * Copies one display name into null-terminated component storage.
@@ -73,11 +114,107 @@ component_label(const modules::Descriptor& descriptor) noexcept {
 }
 
 /**
+ * @param descriptor Module descriptor.
+ * @return True only for the Gear Editor page.
+ */
+[[nodiscard]] bool is_gear_editor(const modules::Descriptor& descriptor) noexcept {
+    return descriptor.display_name() == kGearEditorDisplayName;
+}
+
+/**
+ * Resolves whether the page selected before this frame is Gear Editor.
+ *
+ * Window sizing happens before ImGui::Begin(), while navigation itself is drawn inside the
+ * window. Looking the selected stable ID up in the registry lets the correct page size be chosen
+ * before the window is created.
+ *
+ * @param state Current persisted layout selection.
+ */
+[[nodiscard]] bool gear_editor_selected(const StateSnapshot& state) noexcept {
+    if (state.selectedStableIdLength == 0) {
+        return false;
+    }
+
+    const std::string_view selectedId(state.selectedStableId.data(), state.selectedStableIdLength);
+
+    const modules::registry::RegistrySnapshot registrySnapshot = modules::registry::snapshot();
+
+    for (const modules::Descriptor& descriptor : registrySnapshot.entries()) {
+        if (descriptor.stable_id() == selectedId) {
+            return is_gear_editor(descriptor);
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Changes the Gear Editor authored size and keeps it within its configured range.
+ *
+ * @param widthDelta Authored width adjustment.
+ * @param heightDelta Authored height adjustment.
+ */
+void adjust_gear_editor_size(float widthDelta, float heightDelta) noexcept {
+    g_gearEditorWindowWidth = std::clamp(
+        g_gearEditorWindowWidth + widthDelta, kGearEditorMinimumWidth, kGearEditorMaximumWidth);
+
+    g_gearEditorWindowHeight = std::clamp(
+        g_gearEditorWindowHeight + heightDelta, kGearEditorMinimumHeight, kGearEditorMaximumHeight);
+}
+
+/** Restores the authored Gear Editor window size. */
+void reset_gear_editor_size() noexcept {
+    g_gearEditorWindowWidth = kGearEditorDefaultWidth;
+    g_gearEditorWindowHeight = kGearEditorDefaultHeight;
+}
+
+/**
+ * Draws Gear Editor-only main-window sizing controls.
+ *
+ * The selected size is remembered while Sunrise remains loaded. The actual outer window picks the
+ * new size up on the following frame.
+ */
+void draw_gear_editor_size_controls() noexcept {
+    ImGui::TextDisabled("Menu Size");
+
+    ImGui::SameLine();
+
+    if (ImGui::Button("-##gear_editor_window_size")) {
+        adjust_gear_editor_size(-kGearEditorWidthStep, -kGearEditorHeightStep);
+    }
+
+    ImGui::SameLine();
+
+    ImGui::Text("%.0f x %.0f", g_gearEditorWindowWidth, g_gearEditorWindowHeight);
+
+    ImGui::SameLine();
+
+    if (ImGui::Button("+##gear_editor_window_size")) {
+        adjust_gear_editor_size(kGearEditorWidthStep, kGearEditorHeightStep);
+    }
+
+    ImGui::SameLine();
+
+    if (ImGui::Button("Reset##gear_editor_window_size")) {
+        reset_gear_editor_size();
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+}
+
+/**
  * Works out a centered size that fits the viewport and the authored minimums.
+ *
+ * Normal modules retain Sunrise's original authored size. Gear Editor receives its own remembered
+ * size, independently clamped to the available viewport.
+ *
  * @param viewport Active Dear ImGui viewport.
+ * @param gearEditor True when Gear Editor currently owns the content page.
  * @return Main window size, or zero axes when the viewport is not ready.
  */
-[[nodiscard]] ImVec2 window_size(const ImGuiViewport& viewport) noexcept {
+[[nodiscard]] ImVec2 window_size(const ImGuiViewport& viewport, bool gearEditor) noexcept {
     if (viewport.Size.x <= 0.0F || viewport.Size.y <= 0.0F) {
         return {};
     }
@@ -85,6 +222,7 @@ component_label(const modules::Descriptor& descriptor) noexcept {
     const float margin = scaling::dpi::pixels(kViewportMargin);
     const float availableWidth = viewport.Size.x - (margin * kViewportMarginCount);
     const float availableHeight = viewport.Size.y - (margin * kViewportMarginCount);
+
     const float minimumWidth = scaling::dpi::pixels(kMinimumWindowWidth);
     const float minimumHeight = scaling::dpi::pixels(kMinimumWindowHeight);
 
@@ -92,8 +230,12 @@ component_label(const modules::Descriptor& descriptor) noexcept {
         return {};
     }
 
-    return {(std::min)(scaling::dpi::pixels(kPreferredWindowWidth), availableWidth),
-            (std::min)(scaling::dpi::pixels(kPreferredWindowHeight), availableHeight)};
+    const float authoredWidth = gearEditor ? g_gearEditorWindowWidth : kPreferredWindowWidth;
+
+    const float authoredHeight = gearEditor ? g_gearEditorWindowHeight : kPreferredWindowHeight;
+
+    return {(std::min)(scaling::dpi::pixels(authoredWidth), availableWidth),
+            (std::min)(scaling::dpi::pixels(authoredHeight), availableHeight)};
 }
 
 /**
@@ -109,8 +251,14 @@ void draw_content(const navigation::Selection& selected) noexcept {
     const auto displayName = component_label(selected.descriptor);
     components::section::header(displayName.data());
 
-    // One spacing height below the title row, so a module's first line never sits against it.
-    ImGui::Dummy({kAutomaticWidth, ImGui::GetStyle().ItemSpacing.y});
+    // Gear Editor alone owns controls for the outer Sunrise window size.
+    if (is_gear_editor(selected.descriptor)) {
+        ImGui::Dummy({kAutomaticWidth, ImGui::GetStyle().ItemSpacing.y});
+        draw_gear_editor_size_controls();
+    } else {
+        // One spacing height below the title row, so a module's first line never sits against it.
+        ImGui::Dummy({kAutomaticWidth, ImGui::GetStyle().ItemSpacing.y});
+    }
 
     selected.descriptor.frame_callback()();
 }
@@ -175,7 +323,11 @@ bool render(bool visible) noexcept {
         return false;
     }
 
-    const ImVec2 size = window_size(*viewport);
+    // Capture the current page before sizing the outer window.
+    const StateSnapshot state = snapshot();
+    const bool gearEditor = gear_editor_selected(state);
+
+    const ImVec2 size = window_size(*viewport, gearEditor);
 
     if (size.x <= 0.0F || size.y <= 0.0F) {
         return false;
@@ -222,7 +374,6 @@ bool render(bool visible) noexcept {
         draw_title();
         ImGui::Separator();
 
-        const StateSnapshot state = snapshot();
         navigation::Selection selected{};
         const float panelHeight = ImGui::GetContentRegionAvail().y;
 

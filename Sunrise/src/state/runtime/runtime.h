@@ -339,6 +339,8 @@ struct PendingSocketPlug {
     std::uint8_t materialRequirementCount{};
     bool profileChanged{};
     bool targetEquipped{};
+    /** True for Gear Editor socket mutations that bypass native pool/cost restrictions. */
+    bool unrestricted{};
     bool prepared{};
 };
 
@@ -662,6 +664,30 @@ commit_profile_item_acquisition(PendingProfileItemAcquisition& mutation) noexcep
                                        std::uint8_t socketLane,
                                        std::uint16_t plugDefinitionIndex,
                                        PendingSocketPlug& mutation) noexcept;
+
+/**
+ * Prepares one ordinary-socket selection for Gear Editor without enforcing the normal
+ * per-item socket-pool compatibility rule. Ownership, lane bounds, plug validity, and the
+ * resulting account image are still checked by the State runtime.
+ */
+[[nodiscard]] bool prepare_socket_plug_unrestricted(std::uint64_t targetInstanceSoid,
+                                                    std::uint8_t socketLane,
+                                                    std::uint16_t plugDefinitionIndex,
+                                                    PendingSocketPlug& mutation) noexcept;
+
+/**
+ * Replaces one owned selected-character item instance with another installed item definition.
+ * Used by Gear Editor for direct item replacement.
+ */
+[[nodiscard]] bool replace_item_definition_unrestricted(std::uint64_t targetInstanceSoid,
+                                                        std::uint32_t definitionHash) noexcept;
+
+/**
+ * Inserts one installed item definition directly into the selected character's inventory.
+ * Used by Gear Editor and returns the new runtime item instance identity.
+ */
+[[nodiscard]] bool insert_item_definition_unrestricted(std::uint32_t definitionHash,
+                                                       std::uint64_t& instanceSoid) noexcept;
 
 /**
  * Prepares one ordinary-socket selection for an exact character-screen item selector.

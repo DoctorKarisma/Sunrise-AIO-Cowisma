@@ -11,6 +11,13 @@
 /** The next module-local RCDATA identifier embeds the required PUC-Lua MIT notice. */
 #define IDR_LUA_LICENSE 105
 
+/** Gear Editor item-name lookup table. */
+#define IDR_ITEM_NAMES 111
+/** Gear Editor packed item icons. */
+#define IDR_ITEM_ICONS 112
+/** Gear Editor item-rarity lookup table. */
+#define IDR_ITEM_RARITY 113
+
 /** User-authored bootflow DDS files consumed by the runtime TagHash override. */
 #define IDR_BOOTFLOW_TEXTURE_80A145FF 2007
 #define IDR_BOOTFLOW_TEXTURE_80A14601 2008

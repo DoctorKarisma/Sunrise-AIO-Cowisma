@@ -222,7 +222,8 @@ bool preview_socket_plug(const PendingSocketPlug& mutation, AccountState& after)
                            mutation.socketLane,
                            mutation.requestedPlugDefinitionIndex,
                            canonical,
-                           mutation.plugDefinitionHash)
+                           mutation.plugDefinitionHash,
+                           mutation.unrestricted)
         || canonical.accountSoid != mutation.accountSoid
         || canonical.characterSoid != mutation.characterSoid
         || canonical.targetDefinitionHash != mutation.targetDefinitionHash
@@ -328,7 +329,8 @@ bool commit_socket_plug(PendingSocketPlug& mutation) noexcept {
                            prepared.socketLane,
                            prepared.requestedPlugDefinitionIndex,
                            canonical,
-                           prepared.plugDefinitionHash)
+                           prepared.plugDefinitionHash,
+                           prepared.unrestricted)
         || canonical.characterSoid != prepared.characterSoid
         || canonical.accountSoid != prepared.accountSoid
         || canonical.targetDefinitionHash != prepared.targetDefinitionHash
@@ -509,6 +511,108 @@ bool commit_item_state(PendingItemState& mutation) noexcept {
                       prepared.afterFlags,
                       prepared.targetEquipped,
                       prepared.itemIndex);
+    return true;
+}
+
+/** Prepares an editor-only socket selection without native compatibility or material costs. */
+bool prepare_socket_plug_unrestricted(std::uint64_t targetInstanceSoid,
+                                      std::uint8_t socketLane,
+                                      std::uint16_t plugDefinitionIndex,
+                                      PendingSocketPlug& mutation) noexcept {
+    mutation = {};
+    const AccountState snapshot = account_snapshot();
+    const std::size_t characterIndex = selected_character_index(snapshot);
+    if (characterIndex >= snapshot.characterCount
+        || !stage_socket_plug(snapshot,
+                              characterIndex,
+                              targetInstanceSoid,
+                              socketLane,
+                              plugDefinitionIndex,
+                              mutation,
+                              0,
+                              true)) {
+        report_socket_plug("prepare_editor",
+                           "fail",
+                           "definition_or_lane",
+                           0,
+                           targetInstanceSoid,
+                           0,
+                           socketLane,
+                           plugDefinitionIndex,
+                           0,
+                           0,
+                           false,
+                           0);
+        return false;
+    }
+    return true;
+}
+
+/** Replaces one item definition while preserving its exact character/loadout position. */
+bool replace_item_definition_unrestricted(std::uint64_t targetInstanceSoid,
+                                          std::uint32_t replacementDefinitionHash) noexcept {
+    if (targetInstanceSoid == 0
+        || replacementDefinitionHash == authored_inventory::kNoDefinitionHash) {
+        return false;
+    }
+
+    AcquireSRWLockExclusive(&runtime::storage::g_stateLock);
+
+    AccountState candidate = runtime::storage::g_state.account;
+    const std::size_t characterIndex = selected_character_index(candidate);
+    if (!account::valid(candidate) || characterIndex >= candidate.characterCount) {
+        ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+        return false;
+    }
+
+    CharacterState& character = candidate.characters[characterIndex];
+    CharacterItemLocation location{};
+    family4_loadout::ResolvedLoadout beforeLoadout{};
+    if (!find_character_item_location(character, targetInstanceSoid, location)
+        || !family4_loadout::resolve(candidate, characterIndex, beforeLoadout)) {
+        ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+        return false;
+    }
+
+    authored_inventory::Item* target = character_item_at(character, location);
+    build_data::items::Definition currentDefinition{};
+    build_data::items::Definition replacementDefinition{};
+    item_details::Definition currentDetail{};
+    item_details::Definition replacementDetail{};
+    ResolvedPosition beforePosition{};
+
+    if (target == nullptr || target->definitionHash == replacementDefinitionHash
+        || !build_data::find_item_definition_hash(target->definitionHash, currentDefinition)
+        || !build_data::find_configured_item_detail(currentDefinition.definitionIndex,
+                                                    currentDetail)
+        || !build_data::find_item_definition_hash(replacementDefinitionHash, replacementDefinition)
+        || !build_data::find_configured_item_detail(replacementDefinition.definitionIndex,
+                                                    replacementDetail)
+        || currentDefinition.bucketId != replacementDefinition.bucketId
+        || currentDetail.bucketId != replacementDetail.bucketId
+        || currentDetail.equipmentSlot != replacementDetail.equipmentSlot
+        || replacementDetail.instancedDefinitionState
+               != item_details::InstancedDefinitionState::instanced
+        || !find_resolved_position(beforeLoadout, targetInstanceSoid, beforePosition)) {
+        ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+        return false;
+    }
+
+    target->definitionHash = replacementDefinitionHash;
+    target->sockets = {};
+
+    family4_loadout::ResolvedLoadout afterLoadout{};
+    ResolvedPosition afterPosition{};
+    if (!account::valid(candidate)
+        || !family4_loadout::resolve(candidate, characterIndex, afterLoadout)
+        || !find_resolved_position(afterLoadout, targetInstanceSoid, afterPosition)
+        || !same_position(beforePosition, afterPosition)) {
+        ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+        return false;
+    }
+
+    runtime::storage::g_state.account = candidate;
+    ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
     return true;
 }
 

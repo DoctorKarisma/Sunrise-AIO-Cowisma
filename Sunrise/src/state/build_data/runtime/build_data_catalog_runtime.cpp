@@ -321,6 +321,7 @@ bool find_socket_entry_bucket(std::uint16_t socketEntryListIndex,
     return true;
 }
 
+
 /** @return True when the installed investment constants are in State. */
 bool investment_constants_ready() noexcept {
     constants::InvestmentConstants published{};
@@ -386,3 +387,4 @@ void clear_catalogs() noexcept {
 } // namespace runtime
 
 } // namespace sunrise::state::build_data
+

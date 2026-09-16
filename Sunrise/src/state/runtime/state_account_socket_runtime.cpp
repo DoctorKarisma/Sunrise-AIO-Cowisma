@@ -1,4 +1,4 @@
-﻿/** Socket-plug and item-state staging, which both mutate one character-owned item. */
+/** Socket-plug and item-state staging, which both mutate one character-owned item. */
 
 #include <Windows.h>
 
@@ -103,7 +103,8 @@ void report_socket_plug(std::string_view stage,
                                      std::uint8_t socketLane,
                                      std::uint16_t plugDefinitionIndex,
                                      PendingSocketPlug& mutation,
-                                     std::uint32_t pinnedPlugHash) noexcept {
+                                     std::uint32_t pinnedPlugHash,
+                                     bool unrestricted) noexcept {
     mutation = {};
     CharacterItemLocation location{};
     build_data::items::Definition targetDefinition{};
@@ -155,8 +156,10 @@ void report_socket_plug(std::string_view stage,
         || !build_data::find_item_definition_index(plugDefinitionIndex, plugDefinition)
         || plugDefinition.definitionIndex != plugDefinitionIndex
         || plugDefinition.definitionHash == authored_inventory::kNoDefinitionHash
-        || !build_data::is_socket_plug_allowed(
-            targetDefinition.definitionIndex, socketLane, plugDefinitionIndex)) {
+        || (unrestricted && !build_data::is_socket_plug_valid(plugDefinitionIndex))
+        || (!unrestricted
+            && !build_data::is_socket_plug_allowed(
+                targetDefinition.definitionIndex, socketLane, plugDefinitionIndex))) {
         return fail("definition_or_compatibility");
     }
     if (build_data::is_exotic_catalyst_lane(targetDefinition.definitionIndex, socketLane)) {
@@ -166,7 +169,8 @@ void report_socket_plug(std::string_view stage,
     // Ownership matters only for a plug the account draws down, such as a shader stack. An
     // ornament is a permanent unlock, so demanding a stack for one would refuse a held plug.
     const bool consumesStack =
-        build_data::is_profile_action_source(plugDefinitionIndex, plugDefinition.bucketId)
+        !unrestricted
+        && build_data::is_profile_action_source(plugDefinitionIndex, plugDefinition.bucketId)
         && build_data::is_consumed_on_apply(plugDefinitionIndex, plugDefinition.bucketId)
         && !(socketLane < detail.initialPlugIndices.size()
              && detail.initialPlugIndices[socketLane] == plugDefinitionIndex);
@@ -177,7 +181,9 @@ void report_socket_plug(std::string_view stage,
     AccountState chargedAccount = snapshot;
     build_data::material_requirements::Definition materialSet{};
     bool profileChanged = false;
-    const std::uint16_t materialSetIndex = plugDefinition.insertionMaterialRequirementSetIndex;
+    const std::uint16_t materialSetIndex =
+        unrestricted ? build_data::items::kUnavailableMaterialRequirementSetIndex
+                     : plugDefinition.insertionMaterialRequirementSetIndex;
     if (materialSetIndex != build_data::items::kUnavailableMaterialRequirementSetIndex
         && (!build_data::find_material_requirement_set(materialSetIndex, materialSet)
             || materialSet.requirementSetIndex != materialSetIndex
@@ -213,8 +219,9 @@ void report_socket_plug(std::string_view stage,
     // A rolled socket's apply or re-roll plug is an action: the lane receives a result plug from
     // the roll set. The requested plug still decides the pool check and the material charge.
     build_data::items::Definition grantedDefinition = plugDefinition;
-    if (classify_rolled_plug(plugDefinition, targetDefinition, socketLane)
-        == RolledPlugAction::roll) {
+    if (!unrestricted
+        && classify_rolled_plug(plugDefinition, targetDefinition, socketLane)
+               == RolledPlugAction::roll) {
         const std::uint32_t currentPlugHash = authoredSockets.plugs[socketLane].value_or(0);
         const bool reroll = is_rolled_result(currentPlugHash);
         // A re-staging must land on the plug the first staging rolled, so the pinned roll is
@@ -354,6 +361,7 @@ void report_socket_plug(std::string_view stage,
     mutation.materialRequirementCount = materialSet.requirementCount;
     mutation.profileChanged = profileChanged;
     mutation.targetEquipped = location.equipped;
+    mutation.unrestricted = unrestricted;
     mutation.prepared = true;
     return true;
 }

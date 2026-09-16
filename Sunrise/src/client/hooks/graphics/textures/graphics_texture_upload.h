@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cstdint>
 #include <d3d11.h>
+#include <imgui.h>
 
 namespace sunrise::client::hooks::graphics::textures {
 
@@ -20,5 +22,17 @@ struct Uploaded {
 
 /** @param uploaded Objects released and cleared, after the published slot is emptied. */
 void release_logo_sheet(Uploaded& uploaded) noexcept;
+
+/**
+ * Returns the cached ImGui texture for one item definition hash.
+ * The Gear Editor uses the bundled item-icons resource to populate this cache.
+ *
+ * @param definitionHash Authored Destiny item definition hash.
+ * @return ImGui texture handle, or null when the icon is unavailable.
+ */
+[[nodiscard]] ImTextureID item_icon(std::uint32_t definitionHash) noexcept;
+
+/** Releases every cached Gear Editor item-icon texture. */
+void release_item_icons() noexcept;
 
 } // namespace sunrise::client::hooks::graphics::textures

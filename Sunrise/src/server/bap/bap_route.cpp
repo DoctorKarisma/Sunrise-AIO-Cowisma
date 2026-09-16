@@ -365,6 +365,18 @@ void arm_account_resync_everywhere() noexcept {
     }
 }
 
+/** Arms a fresh account-graph push for every authenticated Family-4 session. */
+bool request_account_resync() noexcept {
+    const std::lock_guard lock(g_lock);
+    const bool active = has_active_family4_peer();
+
+    if (active) {
+        arm_account_resync_everywhere();
+    }
+
+    return active;
+}
+
 /** Extends this peer's flyout hold, clearing a lapsed overlay first. */
 void arm_acquisition_presentation_hold(Session& session) noexcept {
     const std::uint64_t now = GetTickCount64();

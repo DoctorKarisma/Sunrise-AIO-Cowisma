@@ -31,6 +31,7 @@
     <ClCompile Include="src\core\settings\state\social_parser.cpp" />
     <ClCompile Include="src\core\runtime\core_runtime.cpp" />
     <ClCompile Include="src\core\runtime\host_environment.cpp" />
+	<ClCompile Include="src\core\ui\toast\ui_toast_runtime.cpp" />
     <ClCompile Include="src\core\ui\modules\ui_module_descriptor.cpp" />
     <ClCompile Include="src\core\ui\modules\registry\ui_module_registry.cpp" />
     <ClCompile Include="src\core\ui\modules\logs\logs_module_runtime.cpp" />
@@ -575,6 +576,7 @@
     <ClCompile Include="src\server\bap\encrypted\push\activity\activity_incident_push.cpp" />
     <ClCompile Include="src\server\ui\runtime\server_ui_module_runtime.cpp" />
     <ClCompile Include="src\server\ui\tower_events\tower_events_panel.cpp" />
+	<ClCompile Include="src\server\ui\weapon_editor\weapon_editor_panel.cpp" />
     <ClCompile Include="src\server\ui\activity_host\activity_host_panel.cpp" />
     <ClCompile Include="src\server\ui\activity_host\activity_host_sdk_view.cpp" />
     <ClCompile Include="src\server\ui\activity_host\activity_host_sdk_mission_view.cpp" />
@@ -962,6 +964,7 @@
     <ClInclude Include="src\core\settings\steam\definition.h" />
     <ClInclude Include="src\core\runtime\core_runtime.h" />
     <ClInclude Include="src\core\runtime\host_environment.h" />
+	<ClInclude Include="src\core\ui\toast\ui_toast_runtime.h" />
     <ClInclude Include="src\core\ui\imgui_user_config.h" />
     <ClInclude Include="src\core\ui\modules\ui_module_descriptor.h" />
     <ClInclude Include="src\core\ui\modules\registry\ui_module_registry.h" />
@@ -1170,6 +1173,7 @@
     <ClInclude Include="src\state\investment\investment_overrides.h" />
     <ClInclude Include="src\client\hooks\network\investment\investment_refetch.h" />
     <ClInclude Include="src\server\ui\tower_events\tower_events_panel.h" />
+	<ClInclude Include="src\server\ui\weapon_editor\weapon_editor_panel.h" />
     <ClInclude Include="src\state\activity\events\definition.h" />
     <ClInclude Include="src\state\activity\events\activity_event_selection.h" />
     <ClInclude Include="src\state\content\content_catalog.h" />

@@ -42,6 +42,13 @@ void notify_investment_publication() noexcept;
 /** Asks for one more investment refresh slice. Does nothing while no Client is registered. */
 void request_investment_slice() noexcept;
 
+/**
+ * Arms a fresh account-graph push for every authenticated Family-4 session.
+ * Used by in-process tools such as Gear Editor after direct account mutations.
+ * @return True when at least one active Family-4 peer can receive the refresh.
+ */
+[[nodiscard]] bool request_account_resync() noexcept;
+
 /** Read-only eligibility state from one exact authenticated ActivityClient link. */
 struct ActivityLinkView final {
     std::size_t matchingLinks{};

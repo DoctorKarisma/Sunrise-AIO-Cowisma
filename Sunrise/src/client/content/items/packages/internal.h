@@ -512,3 +512,4 @@ void report(std::size_t published, const char* reason) noexcept;
                                                std::uint64_t itemDefinitionCount) noexcept;
 
 } // namespace sunrise::client::content::items::packages
+

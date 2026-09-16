@@ -171,6 +171,34 @@ bool prepare_item_acquisition_for_item(std::uint16_t itemDefinitionIndex,
         account, account, grantedDefinition.definitionHash, false, {.direct = true}, mutation);
 }
 
+/** Inserts one installed instanced item without Collections/material gating. */
+bool insert_item_definition_unrestricted(std::uint32_t definitionHash,
+                                         std::uint64_t& insertedInstanceSoid) noexcept {
+    insertedInstanceSoid = 0;
+    if (definitionHash == authored_inventory::kNoDefinitionHash) {
+        return false;
+    }
+
+    build_data::items::Definition definition{};
+    if (!build_data::find_item_definition_hash(definitionHash, definition)
+        || definition.definitionHash != definitionHash) {
+        return false;
+    }
+
+    PendingItemAcquisition mutation{};
+    if (!prepare_item_acquisition_for_item(definition.definitionIndex, mutation)
+        || mutation.acquiredDefinitionHash != definitionHash
+        || mutation.acquiredInstanceSoid == 0) {
+        return false;
+    }
+    const std::uint64_t instanceSoid = mutation.acquiredInstanceSoid;
+    if (!commit_item_acquisition(mutation)) {
+        return false;
+    }
+    insertedInstanceSoid = instanceSoid;
+    return true;
+}
+
 /** Prepares a fixed Season wrapper expansion without exposing a partial package. */
 bool prepare_direct_item_bundle(std::uint32_t sourceDefinitionHash,
                                 std::span<const std::uint16_t> itemDefinitionIndices,
