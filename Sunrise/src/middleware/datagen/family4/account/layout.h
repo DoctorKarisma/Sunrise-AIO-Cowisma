@@ -34,8 +34,11 @@ inline constexpr std::size_t kSeenProfileSetupPaddingSize = 20;
 inline constexpr std::size_t kProfileSetupPreferencesPaddingSize = 3;
 /** 607 reserved bytes separate preference and keybinding records. */
 inline constexpr std::size_t kPreferencesBindingsPaddingSize = 607;
-/** 456 reserved bytes follow the replicated keybinding record. */
-inline constexpr std::size_t kBindingsProfilePaddingSize = 456;
+/** Padding around the profile's 88-byte new-item bitmap. */
+inline constexpr std::size_t kBindingsNewItemsPaddingSize = 72;
+inline constexpr std::size_t kNewItemsProfilePaddingSize = 296;
+inline constexpr std::size_t kProfileNewItemWordCount = 22;
+inline constexpr std::size_t kProfileNewItemFlagsOffset = 3976;
 /** Native inventory counts are followed by 4 reserved alignment bytes. */
 inline constexpr std::size_t kInventoryCountPaddingSize = 4;
 /** The profile inventory observer reads 16 transient mutation descriptors. */
@@ -141,7 +144,9 @@ struct Object {
     preferences::Record preferences{};
     std::array<std::byte, kPreferencesBindingsPaddingSize> preferencesBindingsPadding{};
     preferences::BindingsRecord bindings{};
-    std::array<std::byte, kBindingsProfilePaddingSize> bindingsProfilePadding{};
+    std::array<std::byte, kBindingsNewItemsPaddingSize> bindingsNewItemsPadding{};
+    std::array<std::uint32_t, kProfileNewItemWordCount> newItemFlags{};
+    std::array<std::byte, kNewItemsProfilePaddingSize> newItemsProfilePadding{};
     std::uint32_t profileItemCount{};
     std::array<std::byte, kInventoryCountPaddingSize> profileCountPadding{};
     std::array<inventory::layout::Entry, kProfileItemCapacity> profileItems{};
@@ -166,6 +171,7 @@ struct Object {
 inline constexpr std::size_t kMinimumSize = kObjectSize;
 
 static_assert(sizeof(Object) == kObjectSize);
+static_assert(offsetof(Object, newItemFlags) == kProfileNewItemFlagsOffset);
 static_assert(offsetof(Object, accountSoid) == kAccountSoidOffset);
 static_assert(offsetof(Object, roster) == kRosterOffset);
 static_assert(offsetof(Object, selectedCharacterSoid) == kSelectedCharacterSoidOffset);

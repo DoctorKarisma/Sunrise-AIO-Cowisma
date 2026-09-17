@@ -30,6 +30,8 @@ extern bool (*g_entityAccepted)(const void*,
                                 const middleware::gameplay::external::EntityBatch&) noexcept;
 extern const void* g_entityAcceptedContext;
 extern EntityTransport g_entityTransport;
+/** Drops incomplete outer packets; callers hold the peer lock. */
+void reset_packet_assemblies() noexcept;
 /** Channel ids this host hands out. The peer refuses one that does not increase. */
 extern std::uint32_t g_channelId;
 

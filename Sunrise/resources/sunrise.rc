@@ -61,3 +61,10 @@ BEGIN
         VALUE "Translation", 0x409, 1200
     END
 END
+
+IDR_INVESTMENT_SCHEMA RCDATA "database/investment_schema.sql"
+IDR_INVESTMENT_DEFAULTS RCDATA "database/investment_defaults.sql"
+IDR_SQLITE_NOTICE RCDATA "../vendor/sqlite/NOTICE.txt"
+
+IDR_ACCOUNT_SETTINGS_SCHEMA RCDATA "database/account_settings_schema.sql"
+IDR_ACCOUNT_SETTINGS_DEFAULTS RCDATA "database/account_settings_defaults.sql"

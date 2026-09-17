@@ -309,7 +309,7 @@ bool stage_entity_baseline_mutation(const CompositeEntityCodecContext& context,
         }
         if (batch.hasAllocationEpoch && !record.implicitToken && !current.occupied
             && (record.flags & (entityCreate | entityUpdate | entityRemove)) == entityRemove) {
-            candidate.ignoredRecordMask |= static_cast<std::uint16_t>(1U << index);
+            candidate.ignoredRecordMask.set(index);
             continue;
         }
         if (batch.hasAllocationEpoch && !record.implicitToken && !current.occupied
@@ -317,7 +317,7 @@ bool stage_entity_baseline_mutation(const CompositeEntityCodecContext& context,
             && (record.allocationSequence == 0
                 || (current.known && !resetSerial
                     && !serial_is_newer(record.allocationSequence, current.allocationSequence)))) {
-            candidate.ignoredRecordMask |= static_cast<std::uint16_t>(1U << index);
+            candidate.ignoredRecordMask.set(index);
             continue;
         }
         if (!stage_entity_record_mutation(context, record, current, next, resetSerial)) {
@@ -387,7 +387,7 @@ bool stage_entity_baseline_mutation(const CompositeEntityCodecContext& context,
     };
     for (std::size_t index = 0; index < count; ++index) {
         const auto& record = entity_record_at(batch, index);
-        if ((candidate.ignoredRecordMask & (1U << index)) == 0 && (record.flags & entityRemove) != 0
+        if (!candidate.ignoredRecordMask.test(index) && (record.flags & entityRemove) != 0
             && !append_terminal(record.token)) {
             return false;
         }
@@ -421,7 +421,7 @@ bool stage_entity_baseline_mutation(const CompositeEntityCodecContext& context,
         change_at(selected).replacement.known = true;
     }
     candidate.hasChanges = changes != 0;
-    candidate.additionalChangeCount = static_cast<std::uint8_t>(changes == 0 ? 0 : changes - 1);
+    candidate.additionalChangeCount = static_cast<std::uint16_t>(changes == 0 ? 0 : changes - 1);
     candidate.valid = true;
     output = candidate;
     return true;

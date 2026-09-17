@@ -10,12 +10,16 @@ namespace sunrise::state::gameplay::squad_entity_retirement {
 namespace identities = entity_identity;
 using Mask = activity::bubble_authority::EntitySlotMask;
 using CellBubbles = std::array<std::int16_t, 256>;
-/** Only a delivered, positive authored squad request can supply an eligible actor class. */
+/** Native map-prop types exclude actors, players, weapons and interactive objects. */
+inline constexpr std::array<std::uint8_t, 5> kRetirablePropTypes{1, 2, 3, 7, 8};
+/** Retirement eligibility comes from an explicit host policy for an exact class. */
 struct Eligibility final {
     identities::SquadReference squad{};
     std::uint32_t rsatTag{};
     std::uint8_t bubble{};
     bool enabled{};
+    bool placedProp{};
+    std::uint8_t objectType{};
     bool operator==(const Eligibility&) const = default;
 };
 /** A prepared mask remains pending until its exact transport publication commits. */
@@ -33,6 +37,7 @@ struct RetirementPlan final {
     std::uint64_t revision{};
     std::uint8_t bubble{};
     bool pending{};
+    bool placedProps{};
 };
 static_assert(std::is_trivially_copyable_v<RetirementPlan>);
 /** Caller synchronization protects captured releases and their publication revisions. */
@@ -43,12 +48,15 @@ public:
                                const Mask&,
                                std::span<const identities::Identity>,
                                std::span<const Eligibility>,
-                               const CellBubbles&) noexcept;
+                               const CellBubbles&,
+                               bool requireComplete = false) noexcept;
     [[nodiscard]] bool prepare(const identities::Source&,
                                std::uint8_t bubble,
                                std::span<const identities::Identity>,
                                RetirementPlan&) const noexcept;
     [[nodiscard]] bool commit(const RetirementPlan&) noexcept;
+    [[nodiscard]] bool pending(const identities::Source&, std::uint8_t bubble) const noexcept;
+    void invalidate_source(const identities::Source&, std::uint8_t bubble) noexcept;
     void returned_slots(std::uint64_t session, std::uint64_t generation, const Mask&) noexcept;
     void invalidate_target(std::uint64_t session,
                            std::uint64_t generation,
@@ -60,6 +68,8 @@ private:
         identities::Source source{};
         std::uint8_t bubble{};
         std::uint64_t revision{};
+        bool requireComplete{};
+        bool invalidated{};
         struct Group final {
             identities::Token root{};
             Eligibility eligibility{};

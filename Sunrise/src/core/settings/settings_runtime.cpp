@@ -3,21 +3,21 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <memory>
+#include <new>
 #include <string_view>
 
 #include "../../../resources/resource.h"
 #include "../filesystem/path.h"
 #include "../logging/log.h"
+#include "parser.h"
 #include "settings.h"
-#include "settings_upgrade.h"
 
 namespace sunrise::core::settings {
 namespace {
 
 /** The JSON settings file is the only file stored directly in the owned folder. */
 constexpr std::wstring_view kSettingsFileSuffix = L"\\settings.json";
-/** An upgraded document is staged under this suffix before it replaces the settings file. */
-constexpr std::wstring_view kUpgradeStageSuffix = L".new";
 /** Largest settings file accepted into fixed storage. */
 constexpr std::size_t kConfigCapacity = 1024 * 1024;
 
@@ -43,7 +43,7 @@ Settings g_settings = defaults();
 }
 
 /**
- * Reports a file this build did not upgrade, which means a newer build wrote it.
+ * Reports a settings version that differs from this build.
  * @param fileVersion Version read from the file, or zero when the key was missing.
  */
 void report_version(std::uint32_t fileVersion) noexcept {
@@ -119,60 +119,6 @@ void report_version(std::uint32_t fileVersion) noexcept {
 }
 
 /**
- * Replaces the settings file with an upgraded document.
- * The text is staged beside the file and moved over it, so a failed write cannot leave half a file.
- * @param configPath Null-terminated settings path.
- * @param document Complete upgraded document.
- * @return True when the file now holds the upgraded document.
- */
-[[nodiscard]] bool store_upgraded(const path::Buffer& configPath,
-                                  std::string_view document) noexcept {
-    path::Buffer stagePath = configPath;
-    if (!path::append(stagePath, kUpgradeStageSuffix)) {
-        return false;
-    }
-    const HANDLE file = CreateFileW(stagePath.chars.data(),
-                                    GENERIC_WRITE,
-                                    0,
-                                    nullptr,
-                                    CREATE_ALWAYS,
-                                    FILE_ATTRIBUTE_NORMAL,
-                                    nullptr);
-    if (file == INVALID_HANDLE_VALUE) {
-        return false;
-    }
-    DWORD written = 0;
-    const auto size = static_cast<DWORD>(document.size());
-    bool complete =
-        WriteFile(file, document.data(), size, &written, nullptr) != FALSE && written == size;
-    complete = CloseHandle(file) != FALSE && complete;
-    complete =
-        complete
-        && MoveFileExW(stagePath.chars.data(), configPath.chars.data(), MOVEFILE_REPLACE_EXISTING)
-               != FALSE;
-    if (!complete) {
-        (void)DeleteFileW(stagePath.chars.data());
-    }
-    return complete;
-}
-
-/**
- * Reports the outcome of an in-place upgrade of the settings file.
- * @param stored True when the upgraded document replaced the file on disk.
- */
-void report_upgrade(bool stored) noexcept {
-    std::array<char, 96> line{};
-    const int written = std::snprintf(line.data(),
-                                      line.size(),
-                                      "ev=settings stage=upgrade version=%u stored=%u",
-                                      static_cast<unsigned>(kSettingsVersion),
-                                      stored ? 1U : 0U);
-    if (written > 0) {
-        log::early({line.data(), static_cast<std::size_t>(written)});
-    }
-}
-
-/**
  * Drops a leading UTF-8 byte order mark.
  * Common editors write one and the parser would read it as a stray token, which fails startup
  * before the log opens.
@@ -234,37 +180,37 @@ bool initialize(void* module) noexcept {
         return fail("too_large");
     }
 
-    // Static because two 1 MiB banks overflow the stack. Settings load once, on one thread.
-    static std::array<char, kConfigCapacity> buffer{};
+    const std::unique_ptr<std::array<char, kConfigCapacity>> buffer{
+        new (std::nothrow) std::array<char, kConfigCapacity>{}};
+    if (!buffer) {
+        CloseHandle(readableFile);
+        return fail("allocate");
+    }
     DWORD read = 0;
     const bool readOk =
-        ReadFile(readableFile, buffer.data(), static_cast<DWORD>(size.QuadPart), &read, nullptr)
+        ReadFile(readableFile, buffer->data(), static_cast<DWORD>(size.QuadPart), &read, nullptr)
             != FALSE
         && read == size.QuadPart;
     const bool closed = CloseHandle(readableFile) != FALSE;
     if (!readOk || !closed) {
         return fail("read");
     }
-    std::string_view document = without_byte_order_mark(std::string_view(buffer.data(), read));
-    static std::array<char, kConfigCapacity> upgradedBuffer{};
-    const bool upgrading = upgrade::needed(document);
-    if (upgrading) {
-        std::string_view bundled;
-        std::size_t upgraded = 0;
-        if (!bundled_document(module, bundled)
-            || !upgrade::apply(document, bundled, upgradedBuffer, upgraded)) {
-            return fail("upgrade");
-        }
-        document = std::string_view(upgradedBuffer.data(), upgraded);
+    std::string_view document = without_byte_order_mark(std::string_view(buffer->data(), read));
+    std::uint32_t version = 0;
+    if (!parser::Parser(document).parse_version(version)) {
+        return fail("version");
     }
-
+    if (version < kSettingsVersion) {
+        if (!DeleteFileW(configPath.chars.data())) {
+            return fail("delete_old");
+        }
+        if (!write_default(module, configPath) || !bundled_document(module, document)) {
+            return fail("write_default");
+        }
+    }
     Settings parsed;
     if (!parse(document, parsed)) {
         return fail("parse");
-    }
-    // The file is replaced only once the upgraded document is known to parse.
-    if (upgrading) {
-        report_upgrade(store_upgraded(configPath, document));
     }
     report_version(parsed.version);
     g_settings = parsed;

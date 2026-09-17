@@ -11,6 +11,7 @@
 
 #include "../../middleware/datagen/family4/loadout/loadout_resolver.h"
 #include "../build_data/runtime.h"
+#include "../investment/store_internal.h"
 #include "../progression/season_pass_reward_catalog.h"
 #include "../unlocks/unlocks_records.h"
 #include "runtime.h"
@@ -93,22 +94,22 @@ bool commit_season_pass_reward(PendingSeasonPassReward& mutation) noexcept {
         return false;
     }
 
-    AcquireSRWLockExclusive(&runtime::storage::g_stateLock);
+    investment::store::g_mutex.lock();
     AccountState after{};
     bool ready = false;
     if (const auto* item = std::get_if<PendingItemAcquisition>(&mutation.grant)) {
-        ready = materialize_item_acquisition(runtime::storage::g_state.account, *item, after);
+        ready = materialize_item_acquisition(investment::store::account(), *item, after);
     } else if (const auto* profile = std::get_if<PendingProfileItemAcquisition>(&mutation.grant)) {
-        ready = materialize_profile_acquisition(runtime::storage::g_state.account, *profile, after);
+        ready = materialize_profile_acquisition(investment::store::account(), *profile, after);
     } else if (const auto* bundle = std::get_if<PendingDirectItemBundle>(&mutation.grant)) {
-        ready = materialize_direct_item_bundle(runtime::storage::g_state.account, *bundle, after);
+        ready = materialize_direct_item_bundle(investment::store::account(), *bundle, after);
     } else if (const auto* resources = std::get_if<PendingRecordRewardGrant>(&mutation.grant)) {
-        ready = materialize_record_reward(runtime::storage::g_state.account, *resources, after);
+        ready = materialize_record_reward(investment::store::account(), *resources, after);
     }
     if (ready) {
-        runtime::storage::g_state.account = after;
+        ready = investment::store::write_account(after);
     }
-    ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+    investment::store::g_mutex.unlock();
     if (!ready) {
         // The claim was written when the reward was prepared, so a refused install undoes it.
         revoke_season_pass_reward(mutation.rewardIndex);
@@ -381,13 +382,13 @@ bool preview_record_reward_grant(const PendingRecordRewardGrant& mutation,
 /** Commits the shared reward after-image and claim together. */
 bool commit_record_reward(PendingRecordRewardGrant& mutation) noexcept {
     const PendingConsumption consume{mutation};
-    AcquireSRWLockExclusive(&runtime::storage::g_stateLock);
+    investment::store::g_mutex.lock();
     AccountState after{};
-    bool ready = materialize_record_reward(runtime::storage::g_state.account, mutation, after);
+    bool ready = materialize_record_reward(investment::store::account(), mutation, after);
     if (ready) {
-        runtime::storage::g_state.account = after;
+        ready = investment::store::write_account(after);
     }
-    ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+    investment::store::g_mutex.unlock();
     if (!ready && mutation.claimedRecordIndex != kUnclaimedRecordIndex) {
         // The claim was written when the reward was prepared, so a refused install undoes it.
         unlocks::records::revoke(mutation.claimedRecordIndex);
@@ -495,10 +496,10 @@ EmoteCollectionOutcome ensure_character_emote_collection() noexcept {
         return EmoteCollectionOutcome::unsupported;
     }
 
-    AcquireSRWLockExclusive(&runtime::storage::g_stateLock);
-    AccountState candidate = runtime::storage::g_state.account;
+    investment::store::g_mutex.lock();
+    AccountState candidate = investment::store::account();
     if (!account::valid(candidate)) {
-        ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+        investment::store::g_mutex.unlock();
         return EmoteCollectionOutcome::notReady;
     }
     bool changed = false;
@@ -544,19 +545,22 @@ EmoteCollectionOutcome ensure_character_emote_collection() noexcept {
         changed = true;
     }
     if (failed) {
-        ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+        investment::store::g_mutex.unlock();
         return EmoteCollectionOutcome::failed;
     }
     if (!changed) {
-        ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+        investment::store::g_mutex.unlock();
         return EmoteCollectionOutcome::ready;
     }
     if (!account::valid(candidate)) {
-        ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+        investment::store::g_mutex.unlock();
         return EmoteCollectionOutcome::failed;
     }
-    runtime::storage::g_state.account = candidate;
-    ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+    if (!investment::store::write_account(candidate)) {
+        investment::store::g_mutex.unlock();
+        return EmoteCollectionOutcome::failed;
+    }
+    investment::store::g_mutex.unlock();
     return EmoteCollectionOutcome::ready;
 }
 

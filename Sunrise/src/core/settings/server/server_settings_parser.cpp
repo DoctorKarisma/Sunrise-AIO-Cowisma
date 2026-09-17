@@ -8,14 +8,12 @@ namespace sunrise::core::settings::parser {
 /** Checks the standalone Server settings object. */
 bool Parser::server_settings(server::Settings& output) noexcept {
     output = {};
-    output.entitlements = state::entitlements::authored();
     if (!consume('{')) {
         return false;
     }
     if (consume('}')) {
         return true;
     }
-    bool hasEntitlements = false;
     bool hasBapPort = false;
     bool hasGameplay = false;
     bool hasActivation = false;
@@ -24,12 +22,7 @@ bool Parser::server_settings(server::Settings& output) noexcept {
         if (!string(key) || !consume(':')) {
             return false;
         }
-        if (key == "entitlements") {
-            if (hasEntitlements || !entitlements(output.entitlements)) {
-                return false;
-            }
-            hasEntitlements = true;
-        } else if (key == "bap_port") {
+        if (key == "bap_port") {
             std::uint64_t value = 0;
             if (hasBapPort || !unsigned_integer(value) || value == 0
                 || value > (std::numeric_limits<std::uint16_t>::max)()) {
@@ -51,7 +44,7 @@ bool Parser::server_settings(server::Settings& output) noexcept {
             return false;
         }
         if (consume('}')) {
-            return state::entitlements::valid(output.entitlements);
+            return true;
         }
         if (!consume(',')) {
             return false;

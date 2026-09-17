@@ -47,6 +47,8 @@ struct DisplayDelta {
     std::optional<std::int8_t> brightness;
     std::optional<bool> showFps;
     std::optional<std::int8_t> hdrMode;
+    std::optional<std::uint8_t> verticalSyncInterval;
+    std::optional<std::int32_t> fieldOfView;
     std::optional<float> calibrationPrimary;
     std::optional<float> calibrationAlpha;
 };

@@ -11,6 +11,7 @@
 #include "../../../state/activity/membership/activity_membership_query.h"
 #include "../../../state/build_data/runtime.h"
 #include "../../../state/build_data/spawn_sets/spawn_set_catalog.h"
+#include "../../gameplay/squad_entity_retirement.h"
 #include "../activity_sdk_device_runtime.h"
 #include "../activity_sdk_lifetime_runtime.h"
 #include "../activity_sdk_mission_runtime.h"
@@ -206,9 +207,7 @@ void arm_state_region_teleport(RuntimeInstance& instance,
         return;
     }
     const std::int32_t reported = membership::player_region(instance.view.binding.sessionId);
-    // The client answers a slice-set transition by de-instantiating its slice set and building the
-    // target, so a move inside one bubble leaves both copies alive and doubles its content. The arm
-    // must stay anyway: it is what orders the spawn, and without it the client never spawns in.
+    // A sibling-state transition still needs the host teleport to order the spawn.
     if (reported == static_cast<std::int32_t>(plan.effectiveRegion)) {
         // Already there. Clear any earlier arm so the mirror owns the block again.
         static_cast<void>(membership::arm_host_teleport(
@@ -324,6 +323,33 @@ void dispatch_intent(RuntimeInstance& instance, std::uint64_t now) noexcept {
     begin_intent_attempt(instance, now);
     switch (intent.kind) {
     case lua_vm::IntentKind::selectMissionState: {
+        if (intent.retirePlacedProps) {
+            namespace retirement = server::gameplay::squad_entity_retirement;
+            const auto* world = instance.worldView.snapshot();
+            const auto placement =
+                state::activity::membership::reported_placement(instance.view.binding.sessionId);
+            const auto status =
+                world == nullptr || instance.publicTarget
+                    ? retirement::TransitionStatus::refused
+                    : retirement::begin_placed_transition(
+                          instance.view,
+                          *world,
+                          intent.requestKey,
+                          state::activity::membership::instantiated_region(placement),
+                          intent.effectiveRegion);
+            if (status == retirement::TransitionStatus::pending) {
+                report_intent_status(
+                    instance, kIntentStatusStateTransitionPending, "placed_retirement_pending");
+                return;
+            }
+            if (status != retirement::TransitionStatus::ready) {
+                refuse_delivery(instance,
+                                "state_refused",
+                                "placed_lifetimes_unavailable",
+                                host::EffectOutcome::refused);
+                return;
+            }
+        }
         scenes::Snapshot selected{};
         const scenes::Status status =
             scenes::select_state(instance.view,
@@ -619,6 +645,32 @@ void dispatch_intent(RuntimeInstance& instance, std::uint64_t now) noexcept {
         }
         return;
     }
+    case lua_vm::IntentKind::playActorSequence: {
+        host::ScriptableOutputReservation reservation{};
+        if (!reserve_delivery(instance, reservation)) {
+            if (instance.programStatus == ProgramStatus::loaded) {
+                refuse_delivery(instance,
+                                "actor_sequence_refused",
+                                "host_reservation_unavailable",
+                                host::EffectOutcome::refused);
+            }
+            return;
+        }
+        const devices::Status status =
+            intent.firstRow == intent.sequenceOwner.slotRow
+                ? devices::play_combatant_sequence_reserved(
+                      instance.view, intent.sequenceOwner, intent.secondRow, reservation)
+                : devices::Status::invalidSlot;
+        if (status == devices::Status::queued) {
+            await_host_commit(instance, now, "actor_sequence_enqueued");
+        } else if (abandon_reserved_delivery(instance, reservation)) {
+            refuse_delivery(instance,
+                            "actor_sequence_refused",
+                            devices::status_name(status),
+                            host::EffectOutcome::refused);
+        }
+        return;
+    }
     case lua_vm::IntentKind::playPerformance: {
         host::ScriptableOutputReservation reservation{};
         if (!reserve_delivery(instance, reservation)) {
@@ -775,6 +827,8 @@ void dispatch_intent(RuntimeInstance& instance, std::uint64_t now) noexcept {
         }
         return;
     }
+    case lua_vm::IntentKind::stopAuthoredScene:
+    case lua_vm::IntentKind::signalAuthoredScene:
     case lua_vm::IntentKind::activateAuthoredScene: {
         host::ScriptableOutputReservation reservation{};
         if (!reserve_delivery(instance, reservation)) {
@@ -787,7 +841,12 @@ void dispatch_intent(RuntimeInstance& instance, std::uint64_t now) noexcept {
             return;
         }
         const scenes::SceneStatus status = scenes::activate_authored_scene_reserved(
-            instance.view, intent.firstRow, intent.secondRow, reservation);
+            instance.view,
+            intent.firstRow,
+            intent.secondRow,
+            reservation,
+            intent.sceneEventKey,
+            intent.kind == lua_vm::IntentKind::stopAuthoredScene);
         if (status == scenes::SceneStatus::queued) {
             await_host_commit(instance, now, "scene_enqueued");
         } else if (!abandon_reserved_delivery(instance, reservation)) {

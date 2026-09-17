@@ -93,14 +93,14 @@ struct EntityBaselineChange {
 struct EntityBaselineMutation final : EntityBaselineChange {
     bool valid{};
     bool hasChanges{};
-    std::uint16_t ignoredRecordMask{};
+    std::bitset<kEntityBatchCapacity> ignoredRecordMask{};
     std::uint8_t expectedAllocationEpoch{}, replacementAllocationEpoch{};
     bool expectedHasAllocationEpoch{}, replacementHasAllocationEpoch{};
     std::uint64_t expectedAllocationDomain{}, replacementAllocationDomain{};
     state::gameplay::entity_identity::Source source{};
     bool scoped{};
     std::array<EntityBaselineChange, kEntityBatchCapacity - 1> additionalChanges{};
-    std::uint8_t additionalChangeCount{};
+    std::uint16_t additionalChangeCount{};
     std::uint64_t expectedAnchorOrder{}, replacementAnchorOrder{};
 };
 

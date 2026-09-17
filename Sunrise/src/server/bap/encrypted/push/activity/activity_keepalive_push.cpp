@@ -15,6 +15,7 @@
 #include "../../../../../state/runtime/runtime.h"
 #include "../../../../activity/host_runtime.h"
 #include "../../../../gameplay/gameplay_advertisement.h"
+#include "../../../../gameplay/squad_entity_retirement.h"
 #include "../../../activity_authority_query_owner.h"
 #include "../../../activity_authority_reset_owner.h"
 #include "../../activity_message/definition.h"
@@ -287,9 +288,16 @@ bool consume_activity_keepalive(Session& session,
         active
         && state::activity::membership::host_teleport_armed(session.activity.session.sessionId)
         && state::activity::membership::acknowledged(session.activity.session.sessionId);
+    const bool placedRetirementDue =
+        active && session.activityPatchEpoch.seen
+        && session.activityPatchEpoch.bindingGeneration == session.activity.bindingGeneration
+        && activity_link_count_locked(session.activity.session) == 1
+        && server::gameplay::squad_entity_retirement::placed_transition_pending(
+            session.activity.session, session.activity.bindingGeneration);
     if (!active
         || (!burstDue && !keepaliveDue && !regionChanged && !hostStateDue && !scriptableDue
-            && !incidentDue && !authorityResetDue && !authorityQueryDue && !hostTeleportDue)) {
+            && !incidentDue && !authorityResetDue && !authorityQueryDue && !hostTeleportDue
+            && !placedRetirementDue)) {
         return false;
     }
     touchesScratch = true;
@@ -306,7 +314,7 @@ bool consume_activity_keepalive(Session& session,
     // republish.
     if (!keepaliveDue && !regionChanged && !hostTeleportDue) {
         bool appendedRoster = false;
-        if (burstDue || hostStateDue || scriptableDue) {
+        if (burstDue || hostStateDue || scriptableDue || placedRetirementDue) {
             appendedRoster = append_roster_notification(
                 session, scratch, key, nextSendNonce, scratch.framed, framedSize);
             published = appendedRoster;

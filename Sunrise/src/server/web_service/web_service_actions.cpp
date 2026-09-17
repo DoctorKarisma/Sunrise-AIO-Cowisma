@@ -15,6 +15,7 @@
 #include "../../middleware/web_service/messages/opcode903.h"
 #include "../../state/build_data/items/item_catalog.h"
 #include "../../state/build_data/runtime.h"
+#include "../../state/investment/store_internal.h"
 #include "../../state/runtime/runtime.h"
 #include "internal_actions.h"
 
@@ -40,6 +41,13 @@ state::SettingsUpdateDisposition mutate_settings(const middleware::web_service::
         return state::SettingsUpdateDisposition::rejected;
     }
 
+    state::investment::store::Transaction writeback;
+    if (!writeback.ready()) {
+        return state::SettingsUpdateDisposition::rejected;
+    }
+    if (request.newItems && !state::account::inventory::record_profile_seen(*request.newItems)) {
+        return state::SettingsUpdateDisposition::rejected;
+    }
     // The completion marker rides the same body; the caller's status path reports the result.
     if (request.profileSetupCompleted) {
         if (state::complete_profile_setup()) {
@@ -61,12 +69,20 @@ state::SettingsUpdateDisposition mutate_settings(const middleware::web_service::
         core::log::write(core::log::Channel::server,
                          core::log::Level::debug,
                          "ev=ws701 stage=prepare result=ready");
+        if (!writeback.commit()) {
+            clear_mutation(outcome);
+            return state::SettingsUpdateDisposition::rejected;
+        }
         return disposition;
     }
     if (disposition == state::SettingsUpdateDisposition::acceptedNoChange) {
         core::log::write(core::log::Channel::server,
                          core::log::Level::debug,
                          "ev=ws701 stage=prepare result=no_change");
+        if (!writeback.commit()) {
+            clear_mutation(outcome);
+            return state::SettingsUpdateDisposition::rejected;
+        }
         return disposition;
     }
 

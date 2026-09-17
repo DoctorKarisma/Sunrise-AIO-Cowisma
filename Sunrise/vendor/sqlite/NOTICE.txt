@@ -1,0 +1,10 @@
+SQLite 3.53.4
+
+SQLite is in the public domain. Its authors dedicate their contributions to the public domain.
+https://www.sqlite.org/copyright.html
+
+Source: https://www.sqlite.org/2026/sqlite-amalgamation-3530400.zip
+Archive SHA3-256: 628a44cfe82c66aed1ccbbe85a562d2e33ebe64b3288981ed76285612227934e
+
+The unmodified sqlite3.c and sqlite3.h amalgamation files are compiled into Sunrise.
+The command-line shell and loadable extensions are not included.

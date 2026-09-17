@@ -107,7 +107,9 @@ std::uint64_t next_family5_clock() noexcept {
 }
 
 /** Records the authoritative world state carried by the client's character write-back. */
-void note_character_writeback(const middleware::web_service::Message& message) noexcept {
+bool note_character_writeback(
+    const middleware::web_service::Message& message,
+    std::span<const state::account::inventory::PresentedItemRow> presentation) noexcept {
 
     namespace writeback = middleware::web_service::messages::opcode702;
 
@@ -129,10 +131,15 @@ void note_character_writeback(const middleware::web_service::Message& message) n
                          {line.data(), static_cast<std::size_t>(written)});
     }
 
-    if (parsed) {
+    if (parsed && request.hasWorldState) {
         state::activity::membership::note_client_writeback(request.worldState
                                                            == writeback::kInWorld);
     }
+
+    return parsed
+           && (!request.newItems
+               || state::account::inventory::record_character_seen(*request.newItems,
+                                                                   presentation));
 }
 
 /** @return True when a purchase names the seasonal artifact vendor, which is answered here. */
@@ -351,7 +358,8 @@ bool encode_resident_dependent_refusal(std::span<const std::byte> request,
 bool consume(std::span<const std::byte> request,
              std::span<std::byte> response,
              std::size_t& written,
-             Outcome& outcome) noexcept {
+             Outcome& outcome,
+             std::span<const state::account::inventory::PresentedItemRow> presentation) noexcept {
 
     written = 0;
     outcome = {};
@@ -368,7 +376,9 @@ bool consume(std::span<const std::byte> request,
 
     if (message.opcode == middleware::web_service::messages::opcode702::kOpcode) {
 
-        note_character_writeback(message);
+        if (!note_character_writeback(message, presentation)) {
+            return false;
+        }
     }
 
     /*

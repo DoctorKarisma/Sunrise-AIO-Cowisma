@@ -114,6 +114,13 @@ Major projects and contributors this build draws from include:
 * **ltsReaver / Godmode, No Turnback, FoV, Coordinate fly, and World speed**
 * Other Sunrise contributors whose work has been incorporated upstream or through community development
 
+Third-party libraries used by Sunrise include:
+
+* **Dear ImGui** — https://github.com/ocornut/imgui
+* **Microsoft Detours** — https://github.com/microsoft/detours
+* **Lua** — https://lua.org/
+* **SQLite** — https://www.sqlite.org/
+
 Please support the original projects and contributors responsible for the features Cowisma builds upon.
 
 ## Disclaimer

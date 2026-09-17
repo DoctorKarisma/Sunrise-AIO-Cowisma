@@ -17,18 +17,6 @@ constexpr std::uint16_t kEmptyDefinitionIndex = 0xFFFF;
 // One lane type serves the authored bank and the native row, so no conversion can lose a lane.
 static_assert(std::is_same_v<layout::Values, state::unlocks::ProgressionLanes>);
 
-/**
- * Picks the authored lanes of one replicated scope.
- * @param scope Replicated object owning the bank.
- * @return Lanes addressed by definition index.
- */
-[[nodiscard]] const state::unlocks::ProgressionBank&
-authored_lanes(state::build_data::progressions::Scope scope) noexcept {
-    const state::unlocks::Table& table = state::unlocks::get();
-    return scope == state::build_data::progressions::Scope::account ? table.accountProgressions
-                                                                    : table.characterProgressions;
-}
-
 } // namespace
 
 /** Keys one object's progression bank and fills each keyed row from the authored lanes. */
@@ -43,7 +31,13 @@ bool key_bank(state::build_data::progressions::Scope scope,
     if (!state::build_data::find_progression_slots(scope, slots, count) || count > bank.size()) {
         return false;
     }
-    const state::unlocks::ProgressionBank& lanes = authored_lanes(scope);
+    state::unlocks::Table table;
+    if (!state::unlocks::snapshot(table)) {
+        return false;
+    }
+    const auto& lanes = scope == state::build_data::progressions::Scope::account
+                            ? table.accountProgressions
+                            : table.characterProgressions;
     for (std::size_t slot = 0; slot < count; ++slot) {
         // The definition catalog is dense, so every key it hands out addresses the authored bank.
         bank[slot].definitionIndex = slots[slot];

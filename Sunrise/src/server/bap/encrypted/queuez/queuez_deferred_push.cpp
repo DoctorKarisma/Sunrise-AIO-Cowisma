@@ -1,4 +1,4 @@
-﻿#include <Windows.h>
+#include <Windows.h>
 
 #include <algorithm>
 #include <limits>
@@ -12,6 +12,7 @@
 #include "../internal.h"
 #include "../push/activity/activity_keepalive_push.h"
 #include "queuez_state_validation.h"
+#include "state/investment/store_internal.h"
 
 namespace sunrise::server::bap::encrypted {
 namespace {
@@ -58,6 +59,11 @@ selected_character(const state::AccountState& account) noexcept {
                                                   std::span<std::byte> response,
                                                   std::size_t& written,
                                                   bool& touchesScratch) noexcept {
+    state::investment::store::Transaction transaction;
+    if (!transaction.ready()) {
+        return false;
+    }
+
     state::PendingItemAcquisition pending{};
     if (!state::prepare_item_acquisition_for_item(request.itemDefinitionIndex, pending)) {
         core::log::write(core::log::Channel::server,
@@ -72,7 +78,7 @@ selected_character(const state::AccountState& account) noexcept {
                                         pending.accountSoid,
                                         pending.characterSoid,
                                         pending.acquiredInstanceSoid,
-                                        pending.profileChanged,
+                                        pending.updates_account(),
                                         acquisition)) {
         core::log::write(core::log::Channel::server,
                          core::log::Level::warn,
@@ -97,7 +103,8 @@ selected_character(const state::AccountState& account) noexcept {
         bap::settle_world_reward();
         return false;
     }
-    if (!state::commit_item_acquisition(pending)) {
+    if (!state::commit_item_acquisition(pending) || !bap::complete_world_reward(request.id)
+        || !transaction.commit()) {
         core::log::write(core::log::Channel::server,
                          core::log::Level::warn,
                          "ev=queuez stage=world_acquisition result=fail reason=commit");
@@ -109,7 +116,6 @@ selected_character(const state::AccountState& account) noexcept {
     middleware::secure_channel::advance_nonce(nextSendNonce);
     session.sendNonce = nextSendNonce;
     session.queuez = acquisition.after;
-    bap::complete_world_reward();
     bap::arm_account_resync_elsewhere(session);
     bap::arm_acquisition_presentation_hold(session);
     return true;
@@ -122,6 +128,11 @@ selected_character(const state::AccountState& account) noexcept {
                                                           std::span<std::byte> response,
                                                           std::size_t& written,
                                                           bool& touchesScratch) noexcept {
+    state::investment::store::Transaction transaction;
+    if (!transaction.ready()) {
+        return false;
+    }
+
     state::PendingProfileItemAcquisition pending{};
     if (!state::prepare_profile_item_acquisition_for_item(
             request.itemDefinitionIndex, request.quantity, pending)) {
@@ -161,7 +172,8 @@ selected_character(const state::AccountState& account) noexcept {
         bap::settle_world_reward();
         return false;
     }
-    if (!state::commit_profile_item_acquisition(pending)) {
+    if (!state::commit_profile_item_acquisition(pending) || !bap::complete_world_reward(request.id)
+        || !transaction.commit()) {
         core::log::write(core::log::Channel::server,
                          core::log::Level::warn,
                          "ev=queuez stage=world_profile_acquisition result=fail reason=commit");
@@ -173,7 +185,6 @@ selected_character(const state::AccountState& account) noexcept {
     middleware::secure_channel::advance_nonce(nextSendNonce);
     session.sendNonce = nextSendNonce;
     session.queuez = acquisition.after;
-    bap::complete_world_reward();
     bap::arm_account_resync_elsewhere(session);
     bap::arm_acquisition_presentation_hold(session);
     return true;
@@ -364,7 +375,8 @@ selected_character(const state::AccountState& account) noexcept {
 /**
  * Sends the family-two re-push the equip that moved the member record owes.
  * An emblem equip leaves the subscribe-time snapshot stale, so the body is rebuilt against the
- * root the subscribe was answered with. One attempt: the arm is spent before the frame is built.
+ * root the subscribe was answered with. One attempt: the arm is spent before the frame is
+ * built.
  * @param session Auth, nonce and queuez state owned by the connection.
  * @param scratch Transform buffers owned by the lock.
  * @param response Whole-frame storage owned by the caller.
@@ -623,8 +635,9 @@ selected_character(const state::AccountState& account) noexcept {
     session.queuez = update.after;
     ++session.artifactResetRefreshCursor;
     if (session.artifactResetRefreshCursor >= session.artifactResetRefresh.instanceCount) {
-        // Equipped sockets feed Family 0/3's derived perk banks. Refresh them once every changed
-        // item resident has landed so reset cannot leave the previous champion effect cached.
+        // Equipped sockets feed Family 0/3's derived perk banks. Refresh them once every
+        // changed item resident has landed so reset cannot leave the previous champion effect
+        // cached.
         session.abilityRefreshDueTick = GetTickCount64();
         session.abilityRefreshArmed = true;
     }
@@ -643,8 +656,8 @@ bool consume_deferred(Session& session,
     if (!session.authenticated) {
         return false;
     }
-    // The overrides go first: they are what the purchased mod unlocks, and the Family-4 companion
-    // waits on its own delay.
+    // The overrides go first: they are what the purchased mod unlocks, and the Family-4
+    // companion waits on its own delay.
     if (consume_artifact_family5_refresh(session, scratch, response, written, touchesScratch)) {
         return true;
     }
@@ -716,8 +729,8 @@ bool consume_deferred(Session& session,
                                      armsRepush,
                                      armsBannerRepush);
     if (framedSize == 0 || framedSize > response.size()) {
-        // Neither failure clears on a retry. Holding the arm starves the keepalive, and the client
-        // drops the activity session once the keepalive stops.
+        // Neither failure clears on a retry. Holding the arm starves the keepalive, and the
+        // client drops the activity session once the keepalive stops.
         session.family4RepushArmed = false;
         core::log::write(core::log::Channel::server,
                          core::log::Level::warn,

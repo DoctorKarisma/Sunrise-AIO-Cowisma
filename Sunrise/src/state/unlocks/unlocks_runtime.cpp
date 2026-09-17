@@ -4,134 +4,124 @@
 #include <mutex>
 #include <shared_mutex>
 
-#include "core/threading/srw_lock.h"
+#include "../investment/store_internal.h"
 
 namespace sunrise::state::unlocks {
-namespace {
+namespace store = investment::store;
 
-Table g_table{};
-core::threading::SrwLock g_lock;
-
-} // namespace
-
-/** Seeds the live unlock banks from the boot policy. */
+/** Replaces the saved unlock banks in one transaction. */
 void publish(const Table& table) noexcept {
-    const std::lock_guard guard(g_lock);
-    g_table = table;
+    (void)store::write_unlocks(table);
 }
 
-/** @return The live unlock banks. */
-const Table& get() noexcept {
-    return g_table;
+/** @return A call-local copy of the saved banks. */
+Table get() noexcept {
+    Table table;
+    if (!store::read_unlocks(table)) {
+        table = {};
+    }
+    return table;
 }
 
-/** Restores empty unlock banks. */
+/** Reads the requested character's banks and the shared account banks together. */
+bool snapshot(Table& output, int characterSlot) noexcept {
+    return store::read_unlocks(output, characterSlot);
+}
+
+/** Clears the saved banks for the active account and selected character. */
 void clear() noexcept {
-    const std::lock_guard guard(g_lock);
-    g_table = Table{};
+    (void)store::write_unlocks(Table{});
 }
 
-/** Runs one write over the live banks under the exclusive lock. */
-void mutate(void* context, void (*apply)(void*, Table&) noexcept) noexcept {
+/** Applies one mutation and reports success only after its database commit. */
+bool mutate(void* context, void (*apply)(void*, Table&) noexcept) noexcept {
     if (apply == nullptr) {
-        return;
+        return false;
     }
-    const std::lock_guard guard(g_lock);
-    apply(context, g_table);
+    store::Transaction transaction;
+    Table table;
+    if (!transaction.ready() || !store::read_unlocks(table)) {
+        return false;
+    }
+    apply(context, table);
+    return store::write_unlocks(table) && transaction.commit();
 }
 
-/** @return True when the account acquired flag at this row is set. */
+/** Reads one saved accountFlags entry. */
 bool account_flag_set(std::uint16_t index) noexcept {
-    const std::shared_lock guard(g_lock);
-    return index < g_table.accountFlags.size() && g_table.accountFlags[index] == kFlagSet;
+    std::int32_t value = 0;
+    const bool loaded =
+        index < kAccountFlagCapacity && store::read_unlock(store::Bank::accountFlags, index, value);
+    return loaded && value == kFlagSet;
 }
 
-/** @return True when the selected character's object flag at this row is set. */
+/** Reads one saved characterObjectFlags entry. */
 bool character_object_flag_set(std::uint16_t index) noexcept {
-    const std::shared_lock guard(g_lock);
-    return index < g_table.characterObjectFlags.size()
-           && g_table.characterObjectFlags[index] == kFlagSet;
+    std::int32_t value = 0;
+    const bool loaded = index < kCharacterObjectFlagCapacity
+                        && store::read_unlock(store::Bank::characterObjectFlags, index, value);
+    return loaded && value == kFlagSet;
 }
 
-/** Writes one account acquired flag. */
-bool set_account_flag(std::uint16_t index, std::uint8_t value) noexcept {
-    const std::lock_guard guard(g_lock);
-    if (index >= g_table.accountFlags.size()) {
-        return false;
-    }
-    g_table.accountFlags[index] = value;
-    return true;
-}
-
-/** @return One account objective value. */
+/** Reads one saved objectiveValues entry. */
 std::int32_t objective_value(std::uint16_t index) noexcept {
-    const std::shared_lock guard(g_lock);
-    return index < g_table.objectiveValues.size() ? g_table.objectiveValues[index] : 0;
+    std::int32_t value = 0;
+    const bool loaded = index < kObjectiveValueCapacity
+                        && store::read_unlock(store::Bank::objectiveValues, index, value);
+    return loaded ? value : 0;
 }
 
-/** Writes one account objective value. */
-bool set_objective_value(std::uint16_t index, std::int32_t value) noexcept {
-    const std::lock_guard guard(g_lock);
-    if (index >= g_table.objectiveValues.size()) {
-        return false;
-    }
-    g_table.objectiveValues[index] = value;
-    return true;
-}
-
-/** Adds to one account objective value. */
-bool add_objective_value(std::uint16_t index, std::int32_t amount) noexcept {
-    const std::lock_guard guard(g_lock);
-    if (index >= g_table.objectiveValues.size()) {
-        return false;
-    }
-    std::int32_t& slot = g_table.objectiveValues[index];
-    if (amount > 0 && slot > (std::numeric_limits<std::int32_t>::max)() - amount) {
-        return false;
-    }
-    if (amount < 0 && slot < (std::numeric_limits<std::int32_t>::min)() - amount) {
-        return false;
-    }
-    slot += amount;
-    return true;
-}
-
-/** Writes one selected-character object flag. */
-bool set_character_object_flag(std::uint16_t index, std::uint8_t value) noexcept {
-    const std::lock_guard guard(g_lock);
-    if (index >= g_table.characterObjectFlags.size()) {
-        return false;
-    }
-    g_table.characterObjectFlags[index] = value;
-    return true;
-}
-
-/** Writes one selected-character object value. */
-bool set_character_object_value(std::uint16_t index, std::int32_t value) noexcept {
-    const std::lock_guard guard(g_lock);
-    if (index >= g_table.characterObjectValues.size()) {
-        return false;
-    }
-    g_table.characterObjectValues[index] = value;
-    return true;
-}
-
-/** @return Lane 0 of one account progression. */
+/** Reads one saved accountProgressions entry. */
 std::int32_t account_progression(std::uint16_t definitionIndex) noexcept {
-    const std::shared_lock guard(g_lock);
-    return definitionIndex < g_table.accountProgressions.size()
-               ? g_table.accountProgressions[definitionIndex][0]
-               : 0;
+    std::int32_t value = 0;
+    const bool loaded =
+        definitionIndex < build_data::progressions::kDefinitionCapacity
+        && store::read_unlock(store::Bank::accountProgressions, definitionIndex, value);
+    return loaded ? value : 0;
 }
 
-/** Writes lane 0 of one account progression. */
+/** Saves one bounded accountFlags entry. */
+bool set_account_flag(std::uint16_t index, std::uint8_t value) noexcept {
+    return index < kAccountFlagCapacity
+           && store::write_unlock(store::Bank::accountFlags, index, value);
+}
+
+/** Saves one bounded objectiveValues entry. */
+bool set_objective_value(std::uint16_t index, std::int32_t value) noexcept {
+    return index < kObjectiveValueCapacity
+           && store::write_unlock(store::Bank::objectiveValues, index, value);
+}
+
+/** Saves one bounded characterObjectFlags entry. */
+bool set_character_object_flag(std::uint16_t index, std::uint8_t value) noexcept {
+    return index < kCharacterObjectFlagCapacity
+           && store::write_unlock(store::Bank::characterObjectFlags, index, value);
+}
+
+/** Saves one bounded characterObjectValues entry. */
+bool set_character_object_value(std::uint16_t index, std::int32_t value) noexcept {
+    return index < kCharacterObjectValueCapacity
+           && store::write_unlock(store::Bank::characterObjectValues, index, value);
+}
+
+/** Saves one bounded accountProgressions entry. */
 bool set_account_progression(std::uint16_t definitionIndex, std::int32_t value) noexcept {
-    const std::lock_guard guard(g_lock);
-    if (definitionIndex >= g_table.accountProgressions.size()) {
+    return definitionIndex < build_data::progressions::kDefinitionCapacity
+           && store::write_unlock(store::Bank::accountProgressions, definitionIndex, value);
+}
+
+/** Adds to an objective under the same transaction that guards overflow. */
+bool add_objective_value(std::uint16_t index, std::int32_t amount) noexcept {
+    store::Transaction transaction;
+    std::int32_t value = 0;
+    if (!transaction.ready() || index >= kObjectiveValueCapacity
+        || !store::read_unlock(store::Bank::objectiveValues, index, value)
+        || (amount > 0 && value > (std::numeric_limits<std::int32_t>::max)() - amount)
+        || (amount < 0 && value < (std::numeric_limits<std::int32_t>::min)() - amount)) {
         return false;
     }
-    g_table.accountProgressions[definitionIndex][0] = value;
-    return true;
+    return store::write_unlock(store::Bank::objectiveValues, index, value + amount)
+           && transaction.commit();
 }
 
 } // namespace sunrise::state::unlocks

@@ -1,6 +1,7 @@
 #include "../../core/logging/log.h"
 #include "../../core/settings/settings.h"
 #include "../../server/bap/runtime.h"
+#include "../activity/mission_launch.h"
 #include "../content/activity/activity_sdk_generation_worker.h"
 #include "../content/activity/scriptable_catalog_worker.h"
 #include "../content/investment/worker.h"
@@ -166,6 +167,7 @@ bool shutdown() noexcept {
     }
 
     hooks::bitmap::uninstall();
+    activity::mission_launch::uninstall();
     hooks::bootflow::uninstall();
     hooks::godmode::uninstall();
     hooks::no_turnback::uninstall();

@@ -241,6 +241,25 @@ bool encode(const state::CharacterState& state,
             const loadout::ResolvedLoadout& resolvedLoadout,
             const state::equipment::light::Evaluation& lightEvaluation,
             std::span<std::byte> output) noexcept {
+    state::unlocks::Table unlocks;
+    return state::unlocks::snapshot(unlocks)
+           && encode(state, resolvedLoadout, lightEvaluation, output, unlocks);
+}
+
+/**
+ * Character unlocks must match the live or prepared inventory view being encoded.
+ * @param state Character identity and inventory to encode.
+ * @param resolvedLoadout Item mappings for this character's inventory.
+ * @param lightEvaluation Equipment light values for the same loadout.
+ * @param output Receives the character object; unchanged on failure.
+ * @param unlocks Unlock snapshot for this character, including any prepared quest value.
+ * @return False when state, mappings, light values, or output bounds are invalid.
+ */
+bool encode(const state::CharacterState& state,
+            const loadout::ResolvedLoadout& resolvedLoadout,
+            const state::equipment::light::Evaluation& lightEvaluation,
+            std::span<std::byte> output,
+            const state::unlocks::Table& unlocks) noexcept {
     if (!valid(state) || !valid(resolvedLoadout)
         || !summary_matches_loadout(resolvedLoadout, lightEvaluation)
         || output.size() < layout::kObjectSize) {
@@ -278,9 +297,7 @@ bool encode(const state::CharacterState& state,
     for (layout::ItemStackRow& stack : object.itemStacks) {
         stack.selector = kEmptyItemStackSelector;
     }
-    // Acquired flags and objective progress are live world state, written by the request that
-    // changed them.
-    const state::unlocks::Table& unlocks = state::unlocks::get();
+    // Use the supplied quest state even when the acquisition has not committed yet.
     for (std::size_t index = 0; index < object.acquiredFlags.size(); ++index) {
         object.acquiredFlags[index] = static_cast<std::byte>(
             index < unlocks.characterObjectFlags.size() ? unlocks.characterObjectFlags[index]
@@ -311,10 +328,11 @@ bool encode(const state::CharacterState& state,
         inventoryRow.quantity = item.quantity;
         inventoryRow.mutationSerial = item.mutationSerial;
         inventoryRow.flags = item.flags;
-        // Both companion arrays are indexed by inventory row, not by equipment slot, and the
-        // client's own producer marks every row it fills.
-        object.newItemFlags[item.inventoryRow / kBitsPerFlagByte] |=
-            std::byte{1U} << (item.inventoryRow % kBitsPerFlagByte);
+        // Badge state and instance watermarks are both addressed by inventory row.
+        if (!item.seen) {
+            object.newItemFlags[item.inventoryRow / kBitsPerFlagByte] |=
+                std::byte{1U} << (item.inventoryRow % kBitsPerFlagByte);
+        }
         object.instanceProgressWatermarks[item.inventoryRow] = kOccupiedRowWatermark;
         if (item.equipped) {
             object.equippedInstanceSoids[item.equipmentSlot] = item.instance.instanceSoid;

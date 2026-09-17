@@ -9,6 +9,7 @@
 #include "../../core/logging/log.h"
 #include "../../middleware/datagen/family4/loadout/loadout_resolver.h"
 #include "../build_data/runtime.h"
+#include "../investment/store_internal.h"
 #include "runtime.h"
 #include "state.h"
 #include "state_account_transaction_helpers.h"
@@ -164,8 +165,8 @@ bool set_primary_soid(std::uint64_t primarySoid) noexcept {
     if (primarySoid == 0) {
         return false;
     }
-    AcquireSRWLockExclusive(&runtime::storage::g_stateLock);
-    AccountState candidate = runtime::storage::g_state.account;
+    investment::store::g_mutex.lock();
+    AccountState candidate = investment::store::account();
     candidate.primarySoid = primarySoid;
     // Characters belong to the account key the Client uses. The reference account and its
     // characters differ only in the low byte, so the authored rows are rebased onto that key.
@@ -173,27 +174,34 @@ bool set_primary_soid(std::uint64_t primarySoid) noexcept {
         candidate.characters[index].soid = primarySoid + 1U + index;
     }
     if (!account::valid(candidate)) {
-        ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+        investment::store::g_mutex.unlock();
         return false;
     }
     // Publish only after the settings and identity rules hold together.
-    runtime::storage::g_state.account = candidate;
-    ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+    if (!investment::store::write_account(candidate)) {
+        investment::store::g_mutex.unlock();
+        return false;
+    }
+    investment::store::g_mutex.unlock();
     return true;
 }
 
 /** Closes the account's one-time profile-setup gate. */
 bool complete_profile_setup() noexcept {
-    AcquireSRWLockExclusive(&runtime::storage::g_stateLock);
-    AccountState& accountState = runtime::storage::g_state.account;
+    investment::store::g_mutex.lock();
+    AccountState accountState = investment::store::account();
     if (accountState.primarySoid == 0 || !account::valid(accountState)) {
-        ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+        investment::store::g_mutex.unlock();
         return false;
     }
 
     const bool changed = !accountState.profileSetupCompleted;
     accountState.profileSetupCompleted = true;
-    ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+    if (!investment::store::write_account(accountState)) {
+        investment::store::g_mutex.unlock();
+        return false;
+    }
+    investment::store::g_mutex.unlock();
 
     if (changed) {
         core::log::write(core::log::Channel::state,
@@ -209,8 +217,8 @@ bool set_selected_character(std::uint64_t characterSoid, bool& changed) noexcept
     if (characterSoid == 0) {
         return false;
     }
-    AcquireSRWLockExclusive(&runtime::storage::g_stateLock);
-    AccountState candidate = runtime::storage::g_state.account;
+    investment::store::g_mutex.lock();
+    AccountState candidate = investment::store::account();
     std::size_t picked = candidate.characterCount;
     for (std::size_t index = 0; index < candidate.characterCount; ++index) {
         if (candidate.characters[index].soid == characterSoid) {
@@ -218,7 +226,7 @@ bool set_selected_character(std::uint64_t characterSoid, bool& changed) noexcept
         }
     }
     if (picked == candidate.characterCount) {
-        ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+        investment::store::g_mutex.unlock();
         return false;
     }
 
@@ -228,12 +236,15 @@ bool set_selected_character(std::uint64_t characterSoid, bool& changed) noexcept
     }
     candidate.characters[picked].selected = true;
     if (!account::valid(candidate)) {
-        ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+        investment::store::g_mutex.unlock();
         return false;
     }
     // Publish only after the whole account still meets its identity rules.
-    runtime::storage::g_state.account = candidate;
-    ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+    for (std::size_t index = 0; index < candidate.characters.size(); ++index) {
+        investment::store::g_session.selected[index] = candidate.characters[index].selected;
+    }
+    investment::store::g_mutex.unlock();
+    (void)seed_seasonal_progression();
     changed = !alreadySelected;
     return true;
 }
@@ -244,8 +255,8 @@ bool set_selected_title(std::uint16_t recordIndex,
                         bool& changed) noexcept {
     characterSoid = 0;
     changed = false;
-    AcquireSRWLockExclusive(&runtime::storage::g_stateLock);
-    AccountState candidate = runtime::storage::g_state.account;
+    investment::store::g_mutex.lock();
+    AccountState candidate = investment::store::account();
     std::size_t selectedIndex = candidate.characterCount;
     for (std::size_t index = 0; index < candidate.characterCount; ++index) {
         if (candidate.characters[index].selected) {
@@ -254,7 +265,7 @@ bool set_selected_title(std::uint16_t recordIndex,
         }
     }
     if (selectedIndex == candidate.characterCount) {
-        ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+        investment::store::g_mutex.unlock();
         return false;
     }
     CharacterState& character = candidate.characters[selectedIndex];
@@ -264,11 +275,14 @@ bool set_selected_title(std::uint16_t recordIndex,
     if (!account::valid(candidate)) {
         characterSoid = 0;
         changed = false;
-        ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+        investment::store::g_mutex.unlock();
         return false;
     }
-    runtime::storage::g_state.account = candidate;
-    ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+    if (!investment::store::write_account(candidate)) {
+        investment::store::g_mutex.unlock();
+        return false;
+    }
+    investment::store::g_mutex.unlock();
     return true;
 }
 
@@ -310,21 +324,21 @@ bool commit_current_activity(PendingCurrentActivity& mutation) noexcept {
         || prepared.afterCharacter.soid != prepared.characterSoid) {
         return false;
     }
-    AcquireSRWLockExclusive(&runtime::storage::g_stateLock);
-    AccountState candidate = runtime::storage::g_state.account;
+    investment::store::g_mutex.lock();
+    AccountState candidate = investment::store::account();
     if (prepared.characterIndex >= candidate.characterCount
         || !same_character(candidate.characters[prepared.characterIndex],
                            prepared.beforeCharacter)) {
-        ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+        investment::store::g_mutex.unlock();
         return false;
     }
     candidate.characters[prepared.characterIndex] = prepared.afterCharacter;
     if (!account::valid(candidate)) {
-        ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+        investment::store::g_mutex.unlock();
         return false;
     }
-    runtime::storage::g_state.account = candidate;
-    ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+    investment::store::g_session.activities[prepared.characterIndex] = prepared.activityIndex;
+    investment::store::g_mutex.unlock();
     return true;
 }
 
@@ -574,19 +588,19 @@ bool commit_equipment_swap(PendingEquipmentSwap& mutation) noexcept {
         return false;
     }
 
-    AcquireSRWLockExclusive(&runtime::storage::g_stateLock);
-    AccountState candidate = runtime::storage::g_state.account;
+    investment::store::g_mutex.lock();
+    AccountState candidate = investment::store::account();
     if (prepared.characterIndex >= candidate.characterCount
         || !same_character(candidate.characters[prepared.characterIndex],
                            prepared.beforeCharacter)) {
-        ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+        investment::store::g_mutex.unlock();
         return false;
     }
     candidate.characters[prepared.characterIndex] = prepared.afterCharacter;
     family4_loadout::ResolvedLoadout checkedAfter{};
     if (!account::valid(candidate)
         || !family4_loadout::resolve(candidate, prepared.characterIndex, checkedAfter)) {
-        ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+        investment::store::g_mutex.unlock();
         return false;
     }
     ResolvedPosition requestedPosition{};
@@ -594,11 +608,14 @@ bool commit_equipment_swap(PendingEquipmentSwap& mutation) noexcept {
     if (!find_resolved_position(checkedAfter, prepared.requestedInstanceSoid, requestedPosition)
         || requestedPosition.equipmentSlot != prepared.nativeEquipmentSlot
         || requestedPosition.equipped != expectedEquipped) {
-        ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+        investment::store::g_mutex.unlock();
         return false;
     }
-    runtime::storage::g_state.account = candidate;
-    ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+    if (!investment::store::write_account(candidate)) {
+        investment::store::g_mutex.unlock();
+        return false;
+    }
+    investment::store::g_mutex.unlock();
 
     // The published ability buckets resolve against the equipped subclass, so swapping that item
     // makes them stale and they need the same invalidation an ability-entry pick does.
@@ -612,9 +629,9 @@ bool commit_equipment_swap(PendingEquipmentSwap& mutation) noexcept {
 
 /** @return A copy of the active account state, read under the lock. */
 AccountState account_snapshot() noexcept {
-    AcquireSRWLockShared(&runtime::storage::g_stateLock);
-    const AccountState snapshot = runtime::storage::g_state.account;
-    ReleaseSRWLockShared(&runtime::storage::g_stateLock);
+    investment::store::g_mutex.lock();
+    const AccountState snapshot = investment::store::account();
+    investment::store::g_mutex.unlock();
     return snapshot;
 }
 
@@ -623,10 +640,10 @@ bool ensure_character_subclasses() noexcept {
     // Index of the subclass slot in the authored equipment array.
     constexpr std::size_t kSubclassSlot =
         static_cast<std::size_t>(authored_inventory::EquipmentSlot::subclass);
-    AcquireSRWLockExclusive(&runtime::storage::g_stateLock);
-    AccountState candidate = runtime::storage::g_state.account;
+    investment::store::g_mutex.lock();
+    AccountState candidate = investment::store::account();
     if (!account::valid(candidate)) {
-        ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+        investment::store::g_mutex.unlock();
         return true;
     }
     std::uint64_t nextSoid = 0;
@@ -688,11 +705,14 @@ bool ensure_character_subclasses() noexcept {
         }
     }
     if (failed || !changed || !account::valid(candidate)) {
-        ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+        investment::store::g_mutex.unlock();
         return !failed;
     }
-    runtime::storage::g_state.account = candidate;
-    ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+    if (!investment::store::write_account(candidate)) {
+        investment::store::g_mutex.unlock();
+        return false;
+    }
+    investment::store::g_mutex.unlock();
     return true;
 }
 

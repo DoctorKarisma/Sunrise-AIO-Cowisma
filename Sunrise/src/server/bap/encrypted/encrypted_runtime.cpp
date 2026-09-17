@@ -21,6 +21,7 @@
 #include "internal.h"
 #include "push/activity/activity_roster_push.h"
 #include "queuez/queuez_outcome_staging.h"
+#include "state/investment/store_internal.h"
 #include "transactions/service_outcome_commit.h"
 
 namespace sunrise::server::bap::encrypted {
@@ -272,6 +273,20 @@ bool consume(Session& session,
                          core::log::Level::warn,
                          "ev=bap stage=web_service result=refuse reason=stale_manifest");
     }
+    state::investment::store::Transaction investmentTransaction;
+    if (!investmentTransaction.ready()) {
+        return false;
+    }
+    std::array<state::account::inventory::PresentedItemRow,
+               queuez::kAcquisitionPresentationRowCapacity>
+        presentation{};
+    if (session.acquisitionPresentationRowCount > presentation.size()) {
+        return false;
+    }
+    for (std::size_t index = 0; index < session.acquisitionPresentationRowCount; ++index) {
+        const auto& row = session.acquisitionPresentationRows[index];
+        presentation[index] = {row.instanceSoid, row.inventoryRow};
+    }
     // Pure one-way services consume only the authenticated receive nonce.
     if (!staleWebAction && processesBody
         && !body::process(route,
@@ -282,7 +297,8 @@ bool consume(Session& session,
                           frame.body,
                           scratch.responseBody,
                           responseBodySize,
-                          outcome)) {
+                          outcome,
+                          std::span(presentation).first(session.acquisitionPresentationRowCount))) {
         diagnostics::report_failure(frame.serviceId, "body");
         // A reply-mode service answers with an empty body instead of not at all. The Client
         // matches only the head of its pending ring. One unanswered request jams that ring for
@@ -402,8 +418,9 @@ bool consume(Session& session,
         if (!retirementValid) {
             commitReason = "entity_retirement_stale";
         }
-        handled =
-            fits && retirementValid && transactions::commit(outcome, publication, commitReason);
+        handled = fits && retirementValid
+                  && transactions::commit(outcome, publication, commitReason)
+                  && investmentTransaction.commit();
         if (!handled) {
             diagnostics::report_failure(
                 frame.serviceId, "commit", fits ? commitReason : "frame_capacity");

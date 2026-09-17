@@ -10,6 +10,7 @@
 #include "../build_data/nodes/node_catalog.h"
 #include "../build_data/records/record_catalog.h"
 #include "../build_data/runtime.h"
+#include "../investment/store.h"
 #include "definition.h"
 #include "unlocks_runtime.h"
 
@@ -46,7 +47,6 @@ std::array<bool, kAccountFlagCapacity> g_counterGranted{};
 bool g_cacheReady{};
 
 /** The authored lore values still stand; they are replaced once the catalogs first load. */
-bool g_loreSeedOwed{true};
 
 /** @return True when that lore node's book counts bars instead of claims. */
 [[nodiscard]] constexpr bool counter_granted_node(std::uint16_t nodeIndex) noexcept {
@@ -393,13 +393,13 @@ void clear_lore_objectives(Table& table) noexcept;
 /** Re-derives every value the claims in the banks imply. Order matters: gates run last. */
 void publish_derived(Table& table) noexcept {
     ensure_cache();
-    if (g_cacheReady && g_loreSeedOwed) {
+    if (g_cacheReady && !investment::store::bootstrap_completed("lore")) {
         // A lore chapter's authored value is not claim state, so the catalogs replace it once.
         clear_lore_objectives(table);
-        (void)build_data::complete_exotic_catalyst_objectives(table.objectiveValues);
-        (void)build_data::complete_exotic_catalyst_flags(table.accountFlags);
-        g_loreSeedOwed = false;
+        (void)investment::store::complete_bootstrap("lore");
     }
+    (void)build_data::complete_exotic_catalyst_objectives(table.objectiveValues);
+    (void)build_data::complete_exotic_catalyst_flags(table.accountFlags);
     (void)node_catalog::apply_visibility(table.accountFlags);
     (void)node_catalog::apply_character_visibility(
         std::as_writable_bytes(std::span(table.characterObjectFlags)));
@@ -544,7 +544,6 @@ struct FlagOperation {
 void seed() noexcept {
     mutate(nullptr, [](void*, Table& table) noexcept {
         g_cacheReady = false;
-        g_loreSeedOwed = true;
         publish_derived(table);
     });
 }
@@ -565,30 +564,30 @@ bool claimed(std::uint16_t flagIndex) noexcept {
 /** @return True when that record reads complete while its flag stays clear. */
 bool claimable(std::uint16_t flagIndex) noexcept {
     FlagOperation operation{flagIndex, false, ObjectiveAdvance::unavailable};
-    mutate(&operation, [](void* context, Table& table) noexcept {
+    const bool saved = mutate(&operation, [](void* context, Table& table) noexcept {
         auto& query = *static_cast<FlagOperation*>(context);
         ensure_cache();
         catalog::Definition record{};
         query.result = !flag_set(table, query.flagIndex) && find_by_flag(query.flagIndex, record)
                        && complete(table, record);
     });
-    return operation.result;
+    return saved && operation.result;
 }
 
 /** Claims one record: sets its flag, adds its score, and re-derives the bars it feeds. */
 bool claim(std::uint16_t recordIndex) noexcept {
     RecordOperation operation{recordIndex, 0, false};
-    mutate(&operation, [](void* context, Table& table) noexcept {
+    const bool saved = mutate(&operation, [](void* context, Table& table) noexcept {
         auto& request = *static_cast<RecordOperation*>(context);
         request.result = claim_locked(table, request.recordIndex);
     });
-    return operation.result;
+    return saved && operation.result;
 }
 
 /** Undoes one claim so a refused commit cannot leave the record held. */
 void revoke(std::uint16_t recordIndex) noexcept {
     RecordOperation operation{recordIndex, 0, false};
-    mutate(&operation, [](void* context, Table& table) noexcept {
+    (void)mutate(&operation, [](void* context, Table& table) noexcept {
         auto& request = *static_cast<RecordOperation*>(context);
         ensure_cache();
         catalog::Definition record{};
@@ -606,7 +605,7 @@ void revoke(std::uint16_t recordIndex) noexcept {
 /** Redeems the next completed step of a record that scores per step. */
 bool claim_interval(std::uint16_t recordIndex, std::uint32_t definitionHash) noexcept {
     RecordOperation operation{recordIndex, definitionHash, false};
-    mutate(&operation, [](void* context, Table& table) noexcept {
+    const bool saved = mutate(&operation, [](void* context, Table& table) noexcept {
         auto& request = *static_cast<RecordOperation*>(context);
         catalog::Definition record{};
         if (!build_data::find_record_definition(request.recordIndex, record)
@@ -630,7 +629,7 @@ bool claim_interval(std::uint16_t recordIndex, std::uint32_t definitionHash) noe
         add_score(table, static_cast<std::int32_t>(step.score));
         request.result = true;
     });
-    return operation.result;
+    return saved && operation.result;
 }
 
 /** Marks one lore chapter collected. */
@@ -639,11 +638,11 @@ GrantOutcome grant_chapter(std::uint16_t recordIndex) noexcept {
         std::uint16_t recordIndex{};
         GrantOutcome outcome{GrantOutcome::refused};
     } operation{recordIndex, GrantOutcome::refused};
-    mutate(&operation, [](void* context, Table& table) noexcept {
+    const bool saved = mutate(&operation, [](void* context, Table& table) noexcept {
         auto& request = *static_cast<GrantOperation*>(context);
         request.outcome = grant_locked(table, request.recordIndex);
     });
-    return operation.outcome;
+    return saved ? operation.outcome : GrantOutcome::refused;
 }
 
 /** Advances one counted lore chapter by one objective unit. */
@@ -674,11 +673,11 @@ GrantOutcome advance_chapter(std::uint16_t recordIndex) noexcept {
 /** Advances the single-objective record that owns one completion flag. */
 ObjectiveAdvance advance_objective(std::uint16_t flagIndex) noexcept {
     FlagOperation operation{flagIndex, false, ObjectiveAdvance::unavailable};
-    mutate(&operation, [](void* context, Table& table) noexcept {
+    const bool saved = mutate(&operation, [](void* context, Table& table) noexcept {
         auto& request = *static_cast<FlagOperation*>(context);
         request.advance = advance_locked(table, request.flagIndex);
     });
-    return operation.advance;
+    return saved ? operation.advance : ObjectiveAdvance::unavailable;
 }
 
 /** @return Triumph score published in the account value bank. */

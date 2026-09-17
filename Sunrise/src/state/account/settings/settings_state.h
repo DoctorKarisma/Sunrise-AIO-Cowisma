@@ -111,7 +111,7 @@ struct Social {
     bool operator==(const Social&) const = default;
 };
 
-/** Complete authored account-setting values, independent of their native record layout. */
+/** Complete saved account preferences, independent of their native record layout. */
 struct AccountSettings {
     Controls controls;
     Audio audio;
@@ -120,7 +120,7 @@ struct AccountSettings {
     Social social;
     KeyBindingSource keyBindingSource{KeyBindingSource::computer};
     bindings::KeyBindings keyBindings;
-    /** True only when a settings object was supplied by configuration. */
+    /** True after every required preference group has been loaded. */
     bool configured{};
 
     bool operator==(const AccountSettings&) const = default;

@@ -20,6 +20,7 @@
 #include "../../../core/settings/settings.h"
 #include "../../../state/activity/mission/runtime.h"
 #include "../../../state/activity/runtime.h"
+#include "../../gameplay/squad_entity_retirement.h"
 #include "../host_runtime.h"
 #include "mission_script_event_batch.h"
 #include "mission_script_runtime_internal.h"
@@ -219,6 +220,39 @@ void push_script_event(RuntimeInstance& instance, const host::Event& event) noex
     }
 }
 
+/**
+ * Queues an exact host-policy transition without consuming a client mission-input sequence.
+ * @param binding Activity generation that accepted the damage.
+ * @param sourceGeneration ActivityClient generation that owns the policy.
+ * @param registryKey Authored squad registry key.
+ * @param slotIndex Native squad slot index.
+ */
+void report_squad_provoked(const state::activity::SessionBinding& binding,
+                           std::uint64_t sourceGeneration,
+                           std::uint32_t registryKey,
+                           std::uint16_t slotIndex) noexcept {
+    if (sourceGeneration == 0 || registryKey == 0
+        || slotIndex > static_cast<std::uint16_t>((std::numeric_limits<std::int16_t>::max)())) {
+        return;
+    }
+    AcquireSRWLockExclusive(&g_lock);
+    auto* instance = find_instance(binding);
+    if (instance != nullptr && instance->view.activityClientGeneration == sourceGeneration) {
+        host::Event event{};
+        event.kind = host::EventKind::squadProvoked;
+        event.binding = binding;
+        event.sequence = instance->missionStateRevision;
+        event.missionSequence = instance->lastMissionSequence;
+        event.sourceGeneration = sourceGeneration;
+        event.tick = GetTickCount64();
+        event.firstRegistryKey = registryKey;
+        event.firstSlotType = sdk::format::kSquadSlotType;
+        event.firstSlotIndex = slotIndex;
+        push_script_event(*instance, event);
+    }
+    ReleaseSRWLockExclusive(&g_lock);
+}
+
 /** Retains the last VM stage and status shown on the panel. */
 void note_vm_status(RuntimeInstance& instance,
                     std::string_view stage,
@@ -230,6 +264,8 @@ void note_vm_status(RuntimeInstance& instance,
 /** Frees one slot; its queued events are retired unless the caller keeps them for a reattach. */
 void clear_instance(RuntimeInstance& instance, bool clearPending) noexcept {
     if (instance.occupied && clearPending) {
+        server::gameplay::squad_entity_retirement::cancel_placed_transition(
+            instance.view.binding, instance.view.activityClientGeneration);
         clear_pending_events(instance.view.binding);
     } else if (instance.occupied) {
         reset_pending_events_for_reattach(instance.view.binding);
@@ -284,6 +320,8 @@ void clear_instance(RuntimeInstance& instance, bool clearPending) noexcept {
     instance.ghostObservations = {};
     instance.actorPathObservations = {};
     instance.squadObservations = {};
+    instance.combatantDamageObservations = {};
+    instance.deviceObservations = {};
     instance.sceneObservations = {};
     instance.objectiveObservations = {};
     instance.sessionRoster = {};
@@ -356,6 +394,8 @@ void persist_mission_fault(RuntimeInstance& instance) noexcept {
 
 /** Faults both the VM and the exact server-owned mission record. */
 void fault_instance(RuntimeInstance& instance, std::string_view reason) noexcept {
+    server::gameplay::squad_entity_retirement::cancel_placed_transition(
+        instance.view.binding, instance.view.activityClientGeneration);
     lua_vm::fault(instance.vm, reason);
     instance.programStatus = ProgramStatus::programError;
     persist_mission_fault(instance);

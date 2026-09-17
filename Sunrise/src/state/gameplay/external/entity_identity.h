@@ -11,8 +11,8 @@ namespace sunrise::state::gameplay::entity_identity {
 /** Native entity and packet sequence domains. */
 inline constexpr std::size_t kSlotCapacity = 8192;
 inline constexpr std::size_t kSourceCapacity = 16;
-/** One atomic packet, including terminal descendants, has bounded server storage. */
-inline constexpr std::size_t kObservationBatchCapacity = 16;
+/** The native external scheduler admits at most 256 records per packet. */
+inline constexpr std::size_t kObservationBatchCapacity = 256;
 inline constexpr std::uint16_t kPacketModulus = 1024;
 inline constexpr std::uint16_t kNoCell = 0xFFFF;
 

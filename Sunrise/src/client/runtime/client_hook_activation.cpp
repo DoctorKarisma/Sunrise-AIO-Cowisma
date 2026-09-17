@@ -10,6 +10,7 @@
 #include "../../core/ui/busy/busy.h"
 #include "../../core/ui/notice/ui_notice_overlay.h"
 #include "../../server/bap/runtime.h"
+#include "../activity/mission_launch.h"
 #include "../content/activity/scriptable_catalog_worker.h"
 #include "../content/bootstrap/bootstrap_token_publish.h"
 #include "../content/investment/worker.h"
@@ -221,8 +222,15 @@ void clear_game_targets() noexcept {
     (void)hooks::bootflow::install();
 
     /*
+     * Install Stan's Activity Launcher. The launcher calls the Director's
+     * own selection entry points; nothing is detoured.
+     */
+    (void)activity::mission_launch::install();
+
+    /*
      * Teleport owns the camera-frame callback that we also use for the
-     * Events investment refetch poll.
+     * Events investment refetch poll. The teleport hooks attach whether
+     * or not the feature is enabled.
      */
     (void)hooks::teleport::install();
 

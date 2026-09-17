@@ -1,6 +1,8 @@
 #include "external_entity_codec.h"
 
 #include <array>
+#include <memory>
+#include <new>
 
 namespace sunrise::middleware::gameplay::external {
 namespace {
@@ -682,6 +684,7 @@ prepare_batch(const TypePayloadCodec& codec, const EntityBatch& batch, BatchPlan
         }
     }
     bool currentCellPresent = false;
+    candidate.currentCell = kNoEntityCell;
     if (!read_flag(reader, currentCellPresent)) {
         return false;
     }
@@ -736,7 +739,7 @@ prepare_batch(const TypePayloadCodec& codec, const EntityBatch& batch, BatchPlan
     }
     candidate.recordPresent = recordCount != 0;
     candidate.additionalRecordCount =
-        static_cast<std::uint8_t>(recordCount == 0 ? 0 : recordCount - 1);
+        static_cast<std::uint16_t>(recordCount == 0 ? 0 : recordCount - 1);
     return true;
 }
 
@@ -762,7 +765,7 @@ prepare_batch(const TypePayloadCodec& codec, const EntityBatch& batch, BatchPlan
 [[nodiscard]] bool read_frame_fields(encoding::bits::Reader& reader,
                                      const TypePayloadCodec& codec,
                                      ExternalEntityFrame& output) noexcept {
-    ExternalEntityFrame candidate{};
+    auto& candidate = output;
     if (!read_flag(reader, candidate.commonPresent)
         || (candidate.commonPresent && !read_common_state(reader, candidate.common))) {
         return false;
@@ -773,7 +776,6 @@ prepare_batch(const TypePayloadCodec& codec, const EntityBatch& batch, BatchPlan
         || present) {
         return false;
     }
-    output = candidate;
     return true;
 }
 
@@ -784,12 +786,12 @@ bool read_entity_batch(encoding::bits::Reader& reader,
                        const TypePayloadCodec& codec,
                        EntityBatch& output) noexcept {
     encoding::bits::Reader candidateReader = reader;
-    EntityBatch candidate{};
-    if (!read_batch_fields(candidateReader, codec, candidate)) {
+    const std::unique_ptr<EntityBatch> candidate(new (std::nothrow) EntityBatch{});
+    if (!candidate || !read_batch_fields(candidateReader, codec, *candidate)) {
         return false;
     }
     reader = candidateReader;
-    output = candidate;
+    output = *candidate;
     return true;
 }
 
@@ -814,12 +816,12 @@ bool read_external_entity_frame(encoding::bits::Reader& reader,
                                 const TypePayloadCodec& codec,
                                 ExternalEntityFrame& output) noexcept {
     encoding::bits::Reader candidateReader = reader;
-    ExternalEntityFrame candidate{};
-    if (!read_frame_fields(candidateReader, codec, candidate)) {
+    const std::unique_ptr<ExternalEntityFrame> candidate(new (std::nothrow) ExternalEntityFrame{});
+    if (!candidate || !read_frame_fields(candidateReader, codec, *candidate)) {
         return false;
     }
     reader = candidateReader;
-    output = candidate;
+    output = *candidate;
     return true;
 }
 

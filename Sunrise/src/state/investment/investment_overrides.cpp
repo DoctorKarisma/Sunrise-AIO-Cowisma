@@ -1,18 +1,17 @@
 #include "investment_overrides.h"
 
-#include <Windows.h>
-
 #include <atomic>
 #include <cstddef>
 
-#include "../runtime/storage/internal.h"
 #include "investment.h"
+#include "store.h"
+#include "store_internal.h"
 
 namespace sunrise::state::investment {
 namespace {
 
 /**
- * Sets or replaces one row of a bounded override list. The caller holds the state lock.
+ * Sets or replaces one row of a bounded override list.
  * @param rows List storage.
  * @param count Rows in use, advanced on an append.
  * @param slot Slot to set.
@@ -30,9 +29,11 @@ template <typename Row, std::size_t Capacity, typename Value>
             return true;
         }
     }
+
     if (count >= rows.size()) {
         return false;
     }
+
     rows[count].slot = slot;
     rows[count].value = value;
     ++count;
@@ -40,8 +41,8 @@ template <typename Row, std::size_t Capacity, typename Value>
 }
 
 /**
- * Removes one row of a bounded override list. Order is not kept; the client reads the list as a
- * set. The caller holds the state lock.
+ * Removes one row of a bounded override list.
+ * Order is not kept; the client reads the list as a set.
  */
 template <typename Row, std::size_t Capacity>
 void clear_row(std::array<Row, Capacity>& rows, std::size_t& count, std::uint16_t slot) noexcept {
@@ -71,36 +72,78 @@ bool consume_client_refetch() noexcept {
 
 /** Sets or replaces one flag override. */
 bool set_flag_override(std::uint16_t slot, std::uint8_t value) noexcept {
-    AcquireSRWLockExclusive(&runtime::storage::g_stateLock);
-    Family5State& family = runtime::storage::g_state.investment.family5;
-    const bool stored = set_row(family.flags, family.flagCount, slot, value);
-    ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+    store::g_mutex.lock();
+
+    store::Transaction transaction;
+    Family5State family{};
+
+    if (!transaction.ready() || !store::read_family5(family)) {
+        store::g_mutex.unlock();
+        return false;
+    }
+
+    const bool stored = set_row(family.flags, family.flagCount, slot, value)
+                        && store::write_family5(family) && transaction.commit();
+
+    store::g_mutex.unlock();
     return stored;
 }
 
 /** Removes one flag override. */
 void clear_flag_override(std::uint16_t slot) noexcept {
-    AcquireSRWLockExclusive(&runtime::storage::g_stateLock);
-    Family5State& family = runtime::storage::g_state.investment.family5;
+    store::g_mutex.lock();
+
+    store::Transaction transaction;
+    Family5State family{};
+
+    if (!transaction.ready() || !store::read_family5(family)) {
+        store::g_mutex.unlock();
+        return;
+    }
+
     clear_row(family.flags, family.flagCount, slot);
-    ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+
+    (void)(store::write_family5(family) && transaction.commit());
+
+    store::g_mutex.unlock();
 }
 
 /** Sets or replaces one value override. */
 bool set_value_override(std::uint16_t slot, std::int32_t value) noexcept {
-    AcquireSRWLockExclusive(&runtime::storage::g_stateLock);
-    Family5State& family = runtime::storage::g_state.investment.family5;
-    const bool stored = set_row(family.values, family.valueCount, slot, value);
-    ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+    store::g_mutex.lock();
+
+    store::Transaction transaction;
+    Family5State family{};
+
+    if (!transaction.ready() || !store::read_family5(family)) {
+        store::g_mutex.unlock();
+        return false;
+    }
+
+    const bool stored = set_row(family.values, family.valueCount, slot, value)
+                        && store::write_family5(family) && transaction.commit();
+
+    store::g_mutex.unlock();
     return stored;
 }
 
 /** Removes one value override. */
 void clear_value_override(std::uint16_t slot) noexcept {
-    AcquireSRWLockExclusive(&runtime::storage::g_stateLock);
-    Family5State& family = runtime::storage::g_state.investment.family5;
+    store::g_mutex.lock();
+
+    store::Transaction transaction;
+    Family5State family{};
+
+    if (!transaction.ready() || !store::read_family5(family)) {
+        store::g_mutex.unlock();
+        return;
+    }
+
     clear_row(family.values, family.valueCount, slot);
-    ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+
+    (void)(store::write_family5(family) && transaction.commit());
+
+    store::g_mutex.unlock();
 }
 
 } // namespace sunrise::state::investment

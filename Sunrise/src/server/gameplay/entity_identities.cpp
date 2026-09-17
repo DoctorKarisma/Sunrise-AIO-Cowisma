@@ -120,7 +120,7 @@ void observe(const identities::Source& source,
     std::array<std::size_t, identities::kObservationBatchCapacity> retained{};
     std::size_t admitted = 0;
     for (std::size_t index = 0; index < count; ++index) {
-        if ((batch.ignoredRecordMask & (1U << index)) != 0) {
+        if (batch.ignoredRecordMask.test(index)) {
             continue;
         }
         retained[admitted] = index;

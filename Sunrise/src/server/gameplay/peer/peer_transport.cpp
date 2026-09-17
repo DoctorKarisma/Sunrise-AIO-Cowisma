@@ -689,6 +689,7 @@ void reset() noexcept {
     std::array<gp::entity_identity::Source, gp::kAssociationCapacity> sources{};
     std::size_t sourceCount = 0;
     AcquireSRWLockExclusive(&g_lock);
+    reset_packet_assemblies();
     for (gp::PeerLink& peer : g_peers) {
         sources[sourceCount++] = entity_source(peer);
         invalidate_entity_identity_locked(sources[sourceCount - 1]);

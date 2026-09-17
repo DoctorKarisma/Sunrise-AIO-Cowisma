@@ -12,10 +12,12 @@
 #include "../../../middleware/gameplay/external/control_state_codec.h"
 #include "../../../middleware/gameplay/peer/connect_messages.h"
 #include "../../../middleware/gameplay/peer/established_packet.h"
+#include "../../../middleware/gameplay/peer/packet_fragments.h"
 #include "../../../middleware/gameplay/peer/reliable_assembly.h"
 #include "../../bap/runtime.h"
 #include "../gameplay_log.h"
 #include "../group/group_host.h"
+#include "peer_packet_fragments.h"
 #include "peer_transport_internal.h"
 
 namespace sunrise::server::gameplay::peer {
@@ -25,6 +27,7 @@ namespace {
 namespace gp = state::gameplay;
 namespace wire = middleware::gameplay::peer;
 namespace bits = middleware::encoding::bits;
+namespace fragments = wire::packet_fragments;
 
 /** Delay sentinel used until a round trip has been measured. */
 constexpr std::uint16_t kDelaySentinel = 1023;
@@ -40,8 +43,10 @@ constexpr std::uint64_t kResendInterval = 250;
 /** Reflected root 0x80806AE6 after its lane-presence bit. */
 constexpr std::size_t kPlayerSnapshotBits = 1373;
 
-/** Capture at most eight unique failures within the endpoint's 1500-byte datagram bound. */
-constexpr std::size_t kRejectedPacketLimit = 8, kRejectedPacketCapacity = 1500;
+/** Eight unique logical packet failures bound the replay sample. */
+constexpr std::size_t kRejectedPacketLimit = 8;
+/** A rejected logical packet can span every native transport fragment. */
+constexpr std::size_t kRejectedPacketCapacity = fragments::kMaximumPacketBytes;
 /** A 256-byte hex chunk leaves room for event fields in the 1024-byte log line. */
 constexpr std::size_t kRejectedHexChunk = 256;
 
@@ -443,6 +448,11 @@ void queue_common_request(const state::gameplay::Endpoint& from,
 void consume_established(const gp::Endpoint& from,
                          std::span<const std::byte> payload,
                          std::uint64_t now) noexcept {
+    PacketInput input{};
+    if (!prepare_packet_input(from, payload, now, input)) {
+        return;
+    }
+    payload = input.payload;
     wire::EstablishedPacket packet{};
     if (!wire::decode_established(payload, true, packet)) {
         report(core::log::Level::debug, "ev=gameplay stage=packet result=drop reason=grammar");
@@ -486,7 +496,8 @@ void consume_established(const gp::Endpoint& from,
     if (peer != nullptr) {
         ingress = entity_source(*peer);
         expectedGuard = wire::connection_sequence_low2(peer->remoteConnectionSequence);
-        guardAccepted = packet.connectionSequenceLow2 == expectedGuard;
+        guardAccepted =
+            packet.connectionSequenceLow2 == expectedGuard && packet_channel_matches(*peer, input);
     }
     if (guardAccepted) {
         if (packet.ack.outboundHeadPresent) {

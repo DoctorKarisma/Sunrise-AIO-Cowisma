@@ -1,5 +1,14 @@
 # Third-party notices
 
+## SQLite
+
+Sunrise compiles SQLite 3.53.4 into the production DLL. SQLite is dedicated to the public domain.
+The unmodified sources and notice are retained under `Sunrise/vendor/sqlite`.
+The notice is also embedded in the DLL.
+
+Source and archive checksum: `Sunrise/vendor/sqlite/NOTICE.txt`.
+Upstream dedication: [SQLite copyright](https://www.sqlite.org/copyright.html).
+
 ## Microsoft Detours
 
 Sunrise compiles the minimal Microsoft Detours runtime sources into the single production DLL. No

@@ -30,6 +30,24 @@ bool actor(const identities::Identity& row, const Eligibility& eligibility) {
            && row.actorSource.type == eligibility.squad.type
            && row.actorSource.index == eligibility.squad.index;
 }
+/** All-one bits name no installed class. */
+constexpr std::uint32_t kAbsentRsatTag = 0xFFFFFFFFU;
+/** A prop needs a positive class and type without any player or actor ownership. */
+bool prop(const identities::Identity& row) {
+    return row.known && row.present && !row.conflicted && row.type == 0 && row.metadata.hasRsat
+           && row.metadata.rsatTag != 0 && row.metadata.rsatTag != kAbsentRsatTag
+           && row.metadata.hasObjectType
+           && std::find(
+                  kRetirablePropTypes.begin(), kRetirablePropTypes.end(), row.metadata.objectType)
+                  != kRetirablePropTypes.end()
+           && !row.metadata.hasPlayerBroadcast && !row.metadata.hasSquad
+           && !row.actorSource.present;
+}
+bool root_matches(const identities::Identity& row, const Eligibility& eligibility) {
+    return eligibility.placedProp ? prop(row) && row.metadata.rsatTag == eligibility.rsatTag
+                                        && row.metadata.objectType == eligibility.objectType
+                                  : actor(row, eligibility);
+}
 /** Only an anchored weapon may use its parent tree when its own source was not reported. */
 bool weapon(const identities::Identity& row, const Eligibility& eligibility) {
     /** Native object-type 14 is the weapon class. */
@@ -65,7 +83,7 @@ bool hierarchy(std::span<const identities::Identity> rows) {
     }
     return true;
 }
-/** Closure traversal stops at unknown roles rather than retireing an unrelated descendant. */
+/** Unknown roles refuse the complete tree. */
 bool closure(identities::Token root,
              const Eligibility& eligibility,
              const Mask& released,
@@ -73,7 +91,7 @@ bool closure(identities::Token root,
              Mask& output) {
     output = {};
     if (root.slot >= rows.size() || rows[root.slot].token != root
-        || !actor(rows[root.slot], eligibility) || rows[root.slot].anchorPresent
+        || !root_matches(rows[root.slot], eligibility) || rows[root.slot].anchorPresent
         || !bit(released, root.slot)) {
         return false;
     }
@@ -88,8 +106,10 @@ bool closure(identities::Token root,
             }
             const bool squad =
                 row.type == 1 && row.metadata.hasSquad && row.metadata.squad == eligibility.squad;
-            if (!bit(released, row.token.slot)
-                || (!actor(row, eligibility) && !weapon(row, eligibility) && !squad)) {
+            const bool eligible = eligibility.placedProp ? prop(row)
+                                                         : actor(row, eligibility)
+                                                               || weapon(row, eligibility) || squad;
+            if (!bit(released, row.token.slot) || !eligible) {
                 return false;
             }
             set(output, row.token.slot);
@@ -99,64 +119,63 @@ bool closure(identities::Token root,
     return true;
 }
 } // namespace
-/** Captures only complete, opted-in actor trees from the authenticated release report. */
+/** Strict captures refuse every matched prop tree that cannot be retired in full. */
 bool Store::capture(const identities::Source& source,
                     std::uint8_t bubble,
                     const Mask& released,
                     std::span<const identities::Identity> rows,
                     std::span<const Eligibility> eligibility,
-                    const CellBubbles& cells) noexcept {
+                    const CellBubbles& cells,
+                    bool requireComplete) noexcept {
     try {
         if (source.activitySessionId == 0 || source.activityClientGeneration == 0 || bubble >= 64
             || !hierarchy(rows)) {
             return false;
         }
-        for (auto& previous : releases_) {
-            if (previous.source != source || previous.bubble == bubble) {
-                continue;
-            }
-            const auto count = previous.groups.size();
-            std::erase_if(previous.groups, [&](const Release::Group& group) {
-                for (std::size_t i = 0; i < released.size(); ++i) {
-                    if ((released[i] & group.entities[i]) != std::byte{}) {
-                        return true;
-                    }
-                }
-                return false;
-            });
-            if (previous.groups.size() != count) {
-                previous.revision = ++revision_;
-            }
-        }
-        std::erase_if(releases_, [](const Release& previous) { return previous.groups.empty(); });
         Release next;
         next.source = source;
         next.bubble = bubble;
-        next.revision = ++revision_;
+        next.requireComplete = requireComplete;
         for (const auto& row : rows) {
-            if (!row.present || row.anchorPresent || !bit(released, row.token.slot)
-                || row.cell >= cells.size() || cells[row.cell] != bubble) {
+            if (!row.present || row.anchorPresent || !bit(released, row.token.slot)) {
                 continue;
             }
             const Eligibility* selected = nullptr;
             for (const auto& candidate : eligibility) {
-                if (candidate.enabled && candidate.bubble == bubble && actor(row, candidate)) {
+                if (candidate.enabled && candidate.bubble == bubble
+                    && root_matches(row, candidate)) {
                     if (selected) {
+                        if (requireComplete && (selected->placedProp || candidate.placedProp)) {
+                            return false;
+                        }
                         selected = nullptr;
                         break;
                     }
                     selected = &candidate;
                 }
             }
-            if (!selected || std::count_if(rows.begin(), rows.end(), [&](const auto& candidate) {
-                                 return !candidate.anchorPresent && actor(candidate, *selected);
-                             }) != 1) {
+            if (!selected) {
+                continue;
+            }
+            if (row.cell >= cells.size() || cells[row.cell] != bubble) {
+                if (requireComplete && selected->placedProp) {
+                    return false;
+                }
+                continue;
+            }
+            if (!selected->placedProp
+                && std::count_if(rows.begin(), rows.end(), [&](const auto& candidate) {
+                       return !candidate.anchorPresent && actor(candidate, *selected);
+                   }) != 1) {
                 continue;
             }
             Release::Group group;
             group.root = row.token;
             group.eligibility = *selected;
             if (!closure(row.token, *selected, released, rows, group.entities)) {
+                if (requireComplete && selected->placedProp) {
+                    return false;
+                }
                 continue;
             }
             bool valid = true;
@@ -169,6 +188,10 @@ bool Store::capture(const identities::Source& source,
                     }
                     group.captured.push_back(member);
                 }
+            }
+            if (requireComplete && selected->placedProp
+                && (!valid || group.captured.size() > RetirementPlan::kLifetimeCapacity)) {
+                return false;
             }
             if (valid) {
                 next.groups.push_back(std::move(group));
@@ -202,16 +225,54 @@ bool Store::capture(const identities::Source& source,
                 }
             }
         }
-        std::erase_if(releases_, [&](const Release& old) {
-            return old.source.activitySessionId == source.activitySessionId
-                   && old.source.activityClientGeneration == source.activityClientGeneration
-                   && (old.source != source || old.bubble == bubble);
-        });
-        /** Pending releases are bounded by the native source and bubble domains. */
-        constexpr std::size_t kMaximumReleases = identities::kSourceCapacity * 64;
-        if (next.groups.empty() || releases_.size() >= kMaximumReleases) {
+        if (next.groups.empty() && requireComplete) {
             return false;
         }
+        /** Pending releases are bounded by the native source and bubble domains. */
+        constexpr std::size_t kMaximumReleases = identities::kSourceCapacity * 64;
+        const auto replacing =
+            std::count_if(releases_.begin(), releases_.end(), [&](const auto& old) {
+                return old.source.activitySessionId == source.activitySessionId
+                       && old.source.activityClientGeneration == source.activityClientGeneration
+                       && (old.source != source || old.bubble == bubble);
+            });
+        if (!next.groups.empty()
+            && releases_.size() - static_cast<std::size_t>(replacing) >= kMaximumReleases) {
+            return false;
+        }
+        // Reserve before changing retained releases; allocation failure leaves them intact.
+        releases_.reserve(releases_.size() + 1);
+        for (auto& previous : releases_) {
+            if (previous.source != source || previous.bubble == bubble) {
+                continue;
+            }
+            const auto count = previous.groups.size();
+            std::erase_if(previous.groups, [&](const Release::Group& group) {
+                for (std::size_t i = 0; i < released.size(); ++i) {
+                    if ((released[i] & group.entities[i]) != std::byte{}) {
+                        if (previous.requireComplete) {
+                            previous.invalidated = true;
+                            return false;
+                        }
+                        return true;
+                    }
+                }
+                return false;
+            });
+            if (previous.groups.size() != count || previous.invalidated) {
+                previous.revision = ++revision_;
+            }
+        }
+        std::erase_if(releases_, [&](const Release& old) {
+            return old.groups.empty()
+                   || (old.source.activitySessionId == source.activitySessionId
+                       && old.source.activityClientGeneration == source.activityClientGeneration
+                       && (old.source != source || old.bubble == bubble));
+        });
+        if (next.groups.empty()) {
+            return false;
+        }
+        next.revision = ++revision_;
         releases_.push_back(std::move(next));
         return true;
     } catch (...) {
@@ -231,18 +292,23 @@ bool Store::prepare(const identities::Source& source,
         if (release.source != source || release.bubble != bubble) {
             continue;
         }
+        if (release.invalidated) {
+            return false;
+        }
         for (const auto& group : release.groups) {
-            if (std::count_if(rows.begin(),
-                              rows.end(),
-                              [&](const auto& row) {
-                                  return !row.anchorPresent && actor(row, group.eligibility);
-                              })
-                != 1) {
+            if (!group.eligibility.placedProp
+                && std::count_if(rows.begin(), rows.end(), [&](const auto& row) {
+                       return !row.anchorPresent && actor(row, group.eligibility);
+                   }) != 1) {
                 continue;
             }
             Mask current{};
             if (!closure(group.root, group.eligibility, group.entities, rows, current)
                 || current != group.entities) {
+                if (release.requireComplete && group.eligibility.placedProp) {
+                    output = {};
+                    return false;
+                }
                 continue;
             }
             bool valid = true;
@@ -253,30 +319,36 @@ bool Store::prepare(const identities::Source& source,
                 }
             }
             if (valid) {
+                if (group.captured.size() > output.lifetimes.size()) {
+                    output = {};
+                    return false;
+                }
+                // A publication contains whole trees, even when the remaining space is too small.
+                if (group.captured.size() > output.lifetimes.size() - output.lifetimeCount) {
+                    continue;
+                }
                 for (std::size_t index = 0; index < output.entities.size(); ++index) {
                     output.entities[index] |= group.entities[index];
                 }
+                for (const auto& member : group.captured) {
+                    output.lifetimes[output.lifetimeCount++] = {member.token,
+                                                                member.allocationSequence,
+                                                                member.allocationEpoch,
+                                                                member.allocationDomain};
+                }
+            } else if (release.requireComplete && group.eligibility.placedProp) {
+                output = {};
+                return false;
             }
         }
         if (!any(output.entities)) {
             return false;
         }
-        for (std::size_t slot = 0; slot < rows.size(); ++slot) {
-            if ((std::to_integer<unsigned>(output.entities[slot / 8]) & (1U << (slot % 8))) != 0) {
-                if (output.lifetimeCount == output.lifetimes.size()) {
-                    output = {};
-                    return false;
-                }
-                output.lifetimes[output.lifetimeCount++] = {rows[slot].token,
-                                                            rows[slot].allocationSequence,
-                                                            rows[slot].allocationEpoch,
-                                                            rows[slot].allocationDomain};
-            }
-        }
         output.source = source;
         output.bubble = bubble;
         output.revision = release.revision;
         output.pending = true;
+        output.placedProps = release.requireComplete;
         return true;
     }
     return false;
@@ -289,7 +361,7 @@ bool Store::commit(const RetirementPlan& plan) noexcept {
     }
     for (auto& release : releases_) {
         if (release.source == plan.source && release.bubble == plan.bubble
-            && release.revision == plan.revision) {
+            && release.revision == plan.revision && !release.invalidated) {
             Mask covered{};
             for (const auto& group : release.groups) {
                 bool complete = true;
@@ -362,6 +434,10 @@ void Store::returned_slots(std::uint64_t session,
             std::erase_if(release.groups, [&](const Release::Group& group) {
                 for (std::size_t i = 0; i < mask.size(); ++i) {
                     if ((group.entities[i] & mask[i]) != std::byte{}) {
+                        if (release.requireComplete) {
+                            release.invalidated = true;
+                            return false;
+                        }
                         return true;
                     }
                 }
@@ -380,13 +456,25 @@ void Store::invalidate_target(std::uint64_t session,
             && release.source.activityClientGeneration == generation) {
             const auto old = release.groups.size();
             std::erase_if(release.groups, [&](const Release::Group& group) {
-                return group.eligibility.squad == target;
+                return !group.eligibility.placedProp && group.eligibility.squad == target;
             });
             if (release.groups.size() != old) {
                 release.revision = ++revision_;
             }
         }
     }
+}
+bool Store::pending(const identities::Source& source, std::uint8_t bubble) const noexcept {
+    return std::any_of(releases_.begin(), releases_.end(), [&](const Release& release) {
+        return release.source == source && release.bubble == bubble && !release.groups.empty();
+    });
+}
+/** Cancelling a transition invalidates every outstanding plan for its captured source. */
+void Store::invalidate_source(const identities::Source& source, std::uint8_t bubble) noexcept {
+    std::erase_if(releases_, [&](const Release& release) {
+        return release.source == source && release.bubble == bubble;
+    });
+    ++revision_;
 }
 void Store::reset() noexcept {
     releases_.clear();

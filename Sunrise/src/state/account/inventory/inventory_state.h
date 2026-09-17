@@ -101,6 +101,8 @@ struct ProfileItem {
     std::int32_t quantity{};
     /** Rising generation copied into the native row and matched by acquisition feedback. */
     std::int32_t mutationSerial{};
+    /** The client has dismissed this item's new-item marker. */
+    bool seen{};
 };
 
 /** One authored equipment item without native table or wire-layout fields. */
@@ -128,6 +130,8 @@ struct Item {
     std::uint8_t superAbilityEntry{10};
     std::uint8_t meleeAbilityEntry{11};
     std::uint8_t classAbilityEntry{2};
+    /** The client has dismissed this item's new-item marker. */
+    bool seen{};
 };
 
 /** Ordered unequipped items placed into their native character-inventory bucket ranges. */

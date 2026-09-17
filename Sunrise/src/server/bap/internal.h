@@ -304,17 +304,11 @@ enum class WorldRewardKind : std::uint8_t {
 
 /** One reward earned in world, held until a Family-4 peer can publish it. */
 struct WorldRewardRequest {
+    std::uint64_t id{};
     std::int32_t quantity{};
     std::uint16_t itemDefinitionIndex{};
     WorldRewardKind kind{};
 };
-/** Packed size of one world reward row: the queue is sized in whole rows of this width. */
-inline constexpr std::size_t kWorldRewardRequestSize = 8;
-static_assert(sizeof(WorldRewardRequest) == kWorldRewardRequestSize);
-
-/** One flyout runs for seconds, so the queue only has to cover a burst inside one activity. */
-inline constexpr std::size_t kWorldRewardQueueCapacity = 64;
-
 /** Mutable transport state owned by one BAP connection. */
 struct Session {
     std::uint64_t activityAdvertisementHostGeneration{};
@@ -523,7 +517,7 @@ void arm_acquisition_presentation_hold(Session& session) noexcept;
 [[nodiscard]] bool current_world_reward(WorldRewardRequest& request) noexcept;
 
 /** Removes the world reward returned by current_world_reward. */
-void complete_world_reward() noexcept;
+[[nodiscard]] bool complete_world_reward(std::uint64_t id) noexcept;
 
 /** Commits the queued reward with no flyout once its presentation cannot be built. */
 void settle_world_reward() noexcept;

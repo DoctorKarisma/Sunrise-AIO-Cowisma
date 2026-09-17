@@ -24,7 +24,8 @@ namespace inventory_buckets = build_data::inventory::buckets;
 [[nodiscard]] static bool same_profile_item(const authored_inventory::ProfileItem& left,
                                             const authored_inventory::ProfileItem& right) noexcept {
     return left.instanceSoid == right.instanceSoid && left.definitionHash == right.definitionHash
-           && left.quantity == right.quantity && left.mutationSerial == right.mutationSerial;
+           && left.quantity == right.quantity && left.mutationSerial == right.mutationSerial
+           && left.seen == right.seen;
 }
 
 /** @return True when a complete fixed profile inventory equals one captured view. */

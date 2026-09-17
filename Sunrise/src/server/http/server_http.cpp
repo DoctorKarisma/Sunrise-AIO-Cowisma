@@ -30,13 +30,15 @@ bool consume(const client::network::HttpRequest& request,
     const auto& signOnState = state::sign_on();
     const auto serverTime = static_cast<std::uint64_t>(core::runtime::server_clock_seconds());
     const std::uint64_t expiry = serverTime + signOnState.tokenLifetimeSeconds;
-    if (!middleware::signon::encode_success(signOnState,
-                                            state::entitlements::get(),
-                                            expiry,
-                                            serverTime,
-                                            kObservedClientAddress,
-                                            request.response,
-                                            response.size)) {
+    state::entitlements::Table ownership;
+    if (!state::entitlements::snapshot(ownership)
+        || !middleware::signon::encode_success(signOnState,
+                                               ownership,
+                                               expiry,
+                                               serverTime,
+                                               kObservedClientAddress,
+                                               request.response,
+                                               response.size)) {
         core::log::write(core::log::Channel::server,
                          core::log::Level::warn,
                          "ev=http method=post route=signon stage=encode result=fail");

@@ -35,7 +35,7 @@
     <TargetName>steam_api64</TargetName>
     <OutDir>$(ProjectDir)..\build\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(ProjectDir)..\build\obj\$(Platform)\$(Configuration)\</IntDir>
-    <ExternalIncludePath>$(ExternalIncludePath);$(ProjectDir)vendor\detours;$(ProjectDir)vendor\imgui;$(ProjectDir)vendor\imgui\backends;$(ProjectDir)vendor\lua</ExternalIncludePath>
+    <ExternalIncludePath>$(ExternalIncludePath);$(ProjectDir)vendor\detours;$(ProjectDir)vendor\imgui;$(ProjectDir)vendor\imgui\backends;$(ProjectDir)vendor\lua;$(ProjectDir)vendor\sqlite</ExternalIncludePath>
     <VcpkgApplocalDeps>false</VcpkgApplocalDeps>
     <!-- clang rejects the UCRT offsetof macro in a constant expression, so point it at the
          builtin. MSVC refuses the same define as a reserved name, so it stays on this pass. -->
@@ -49,7 +49,7 @@
       <ConformanceMode>true</ConformanceMode>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)vendor\detours;$(ProjectDir)vendor\lua;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)vendor\detours;$(ProjectDir)vendor\lua;$(ProjectDir)vendor\sqlite;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <TreatAngleIncludeAsExternal>true</TreatAngleIncludeAsExternal>
       <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
       <PreprocessorDefinitions>WIN32;_WINDOWS;_USRDLL;WIN32_LEAN_AND_MEAN;NOMINMAX;IMGUI_USER_CONFIG="core/ui/imgui_user_config.h";%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -101,6 +101,18 @@
   <ItemGroup>
     <ClCompile Include="src\client\hooks\player_scale\player_scale.cpp" />
     <ClCompile Include="src\state\gameplay\external\entity_object_types.cpp" />
+    <ClCompile Include="src\state\investment\investment_account_store.cpp" />
+    <ClCompile Include="src\state\investment\investment_database.cpp" />
+    <ClCompile Include="src\middleware\content\packages\tables\quest_initialization_reader.cpp" />
+    <ClCompile Include="src\state\investment\investment_inventory_store.cpp" />
+    <ClCompile Include="src\state\investment\investment_store_boot.cpp" />
+    <ClCompile Include="src\state\investment\investment_unlock_store.cpp" />
+    <ClCompile Include="vendor\sqlite\sqlite3.c">
+      <CompileAs>CompileAsC</CompileAs>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <PreprocessorDefinitions>SQLITE_OMIT_LOAD_EXTENSION;SQLITE_THREADSAFE=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
     <ClCompile Include="src\dllmain.cpp" />
     <ClCompile Include="src\core\logging\log.cpp" />
     <ClCompile Include="src\core\logging\snapshot\log_snapshot_ring.cpp" />
@@ -112,22 +124,11 @@
     <ClCompile Include="src\core\settings\json_scalar.cpp" />
     <ClCompile Include="src\core\settings\json_structure.cpp" />
     <ClCompile Include="src\core\settings\settings_runtime.cpp" />
-    <ClCompile Include="src\core\settings\settings_upgrade.cpp" />
     <ClCompile Include="src\core\settings\client\client_settings_parser.cpp" />
     <ClCompile Include="src\core\settings\client\client_ui_settings_parser.cpp" />
     <ClCompile Include="src\core\settings\server\server_settings_parser.cpp" />
-    <ClCompile Include="src\core\settings\server\entitlement_settings_parser.cpp" />
     <ClCompile Include="src\core\settings\steam\steam_settings_parser.cpp" />
-    <ClCompile Include="src\core\settings\state\account_settings_parser.cpp" />
-    <ClCompile Include="src\core\settings\state\family5_override_parser.cpp" />
     <ClCompile Include="src\core\settings\state\activity_default_destination_parser.cpp" />
-    <ClCompile Include="src\core\settings\state\inventory_parser.cpp" />
-    <ClCompile Include="src\core\settings\state\audio_parser.cpp" />
-    <ClCompile Include="src\core\settings\state\controls_parser.cpp" />
-    <ClCompile Include="src\core\settings\state\display_parser.cpp" />
-    <ClCompile Include="src\core\settings\state\interface_parser.cpp" />
-    <ClCompile Include="src\core\settings\state\key_bindings_parser.cpp" />
-    <ClCompile Include="src\core\settings\state\social_parser.cpp" />
     <ClCompile Include="src\core\runtime\core_runtime.cpp" />
     <ClCompile Include="src\core\runtime\host_environment.cpp" />
 	<ClCompile Include="src\core\ui\toast\ui_toast_runtime.cpp" />
@@ -596,7 +597,6 @@
     <ClCompile Include="src\state\activity\membership\activity_membership_query.cpp" />
     <ClCompile Include="src\state\unlocks\unlocks_runtime.cpp" />
     <ClCompile Include="src\state\unlocks\unlocks_records.cpp" />
-    <ClCompile Include="src\state\entitlements\entitlement_defaults.cpp" />
     <ClCompile Include="src\state\entitlements\entitlement_runtime.cpp" />
     <ClCompile Include="src\state\entitlements\entitlement_validation.cpp" />
     <ClCompile Include="src\state\activity\defaults\activity_defaults_snapshot.cpp" />
@@ -738,6 +738,7 @@
     <ClCompile Include="src\client\content\activity\activity_sdk_lua_activities.cpp" />
     <ClCompile Include="src\client\content\activity\activity_sdk_lua_artifacts.cpp" />
     <ClCompile Include="src\client\content\activity\activity_sdk_lua_contract.cpp" />
+    <ClCompile Include="src\client\content\activity\activity_sdk_lua_actor_sequences.cpp" />
     <ClCompile Include="src\client\content\activity\activity_sdk_lua_catalog_contract.cpp" />
     <ClCompile Include="src\client\content\activity\activity_sdk_lua_manifest_contract.cpp" />
     <ClCompile Include="src\client\content\activity\activity_sdk_lua_world_contract.cpp" />
@@ -806,6 +807,7 @@
     <ClCompile Include="src\server\runtime\server_runtime.cpp" />
     <ClCompile Include="src\server\activity\activity_sdk_scriptable_route.cpp" />
     <ClCompile Include="src\server\activity\activity_sdk_device_runtime.cpp" />
+    <ClCompile Include="src\server\activity\activity_sdk_actor_sequences.cpp" />
     <ClCompile Include="src\server\activity\activity_sdk_lifetime_runtime.cpp" />
     <ClCompile Include="src\server\activity\activity_sdk_squad_runtime.cpp" />
     <ClCompile Include="src\server\activity\activity_sdk_mission_runtime.cpp" />
@@ -825,6 +827,7 @@
     <ClCompile Include="src\server\activity\mission\mission_script_lua_message_api.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_lua_peer_api.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_lua_slot_api.cpp" />
+    <ClCompile Include="src\server\activity\mission\mission_script_lua_actor_sequence_api.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_lua_value_api.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_lua_enum_api.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_lua_key_api.cpp" />
@@ -838,11 +841,14 @@
     <ClCompile Include="src\server\activity\mission\mission_script_message_catalog.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_runtime.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_runtime_edges.cpp" />
+    <ClCompile Include="src\server\activity\mission\mission_script_runtime_combatant_damage.cpp" />
+    <ClCompile Include="src\server\activity\mission\mission_script_runtime_device.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_cinematic.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_player_trigger.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_runtime_delivery.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_runtime_dispatch.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_sdk_bridge.cpp" />
+    <ClCompile Include="src\server\activity\mission\mission_script_actor_sequence_bridge.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_catalog_sdk_bridge.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_manifest_sdk_bridge.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_world_sdk_bridge.cpp" />
@@ -873,6 +879,7 @@
     <ClCompile Include="src\server\ui\activity_host\activity_host_sdk_view.cpp" />
     <ClCompile Include="src\server\ui\activity_host\activity_host_sdk_mission_view.cpp" />
     <ClCompile Include="src\server\ui\activity_host\activity_host_sdk_state_pages.cpp" />
+    <ClCompile Include="src\server\ui\activity_host\activity_host_sdk_actor_sequences.cpp" />
     <ClCompile Include="src\server\ui\activity_host\activity_host_sdk_squad_view.cpp" />
     <ClCompile Include="src\server\ui\activity_host\activity_host_authored_anchors.cpp" />
     <ClCompile Include="src\server\ui\activity_host\activity_host_anchor_render_controls.cpp" />
@@ -890,8 +897,6 @@
     <ClCompile Include="src\server\ui\activity_host\activity_host_sdk_behavior_view.cpp" />
     <ClCompile Include="src\server\ui\activity_host\activity_host_scriptable_world_links.cpp" />
     <ClCompile Include="src\server\ui\activity_host\activity_host_sdk_squad_actions.cpp" />
-    <ClCompile Include="src\server\ui\activity_override\activity_override_panel.cpp" />
-    <ClCompile Include="src\server\ui\activity_override\activity_override_lists.cpp" />
     <ClCompile Include="src\server\transport\bap_listener.cpp" />
     <ClCompile Include="src\server\bap\bap_route.cpp" />
     <ClCompile Include="src\server\bap\bap_activity_link_view.cpp" />
@@ -1108,7 +1113,6 @@
     <ClCompile Include="src\state\build_data\runtime\build_data_routing_catalogs.cpp" />
     <ClCompile Include="src\state\build_data\cache\records\cache_investment_records.cpp" />
     <ClCompile Include="src\server\bap\encrypted\push\snapshot\family4_object_staging.cpp" />
-    <ClCompile Include="src\core\settings\state\account_rows_parser.cpp" />
     <ClCompile Include="src\server\bap\encrypted\push\queuez\queuez_banner_push.cpp" />
     <ClCompile Include="src\server\bap\encrypted\push\queuez\queuez_push_reporting.cpp" />
     <ClCompile Include="src\server\bap\encrypted\push\queuez\queuez_family5_push.cpp" />
@@ -1139,6 +1143,8 @@
     <ClCompile Include="src\middleware\gameplay\peer\peer_container.cpp" />
     <ClCompile Include="src\middleware\gameplay\peer\connect_messages.cpp" />
     <ClCompile Include="src\middleware\gameplay\peer\established_packet.cpp" />
+    <ClCompile Include="src\middleware\gameplay\peer\packet_fragments.cpp" />
+    <ClCompile Include="src\server\gameplay\peer\peer_packet_fragments.cpp" />
     <ClCompile Include="src\middleware\gameplay\external\common_state.cpp" />
     <ClCompile Include="src\middleware\gameplay\external\control_state_codec.cpp" />
     <ClCompile Include="src\middleware\gameplay\external\external_entity_codec.cpp" />
@@ -1147,6 +1153,7 @@
     <ClCompile Include="src\middleware\gameplay\external\simulation_event_codec.cpp" />
     <ClCompile Include="src\middleware\gameplay\external\actor_command_runtime_codec.cpp" />
     <ClCompile Include="src\middleware\gameplay\external\actor_entity_registry.cpp" />
+    <ClCompile Include="src\middleware\gameplay\external\actor_entity_squad_source.cpp" />
     <ClCompile Include="src\middleware\gameplay\external\composite_entity_codec.cpp" />
     <ClCompile Include="src\middleware\gameplay\external\simulation_event_runtime_codec.cpp" />
     <ClCompile Include="src\server\gameplay\gameplay_log.cpp" />
@@ -1210,6 +1217,7 @@
     <ClCompile Include="src\state\build_data\sobjects\sobject_catalog.cpp" />
   </ItemGroup>
   <ItemGroup Condition="'$(SunriseRunClangTidy)'=='true'">
+    <ClCompile Remove="vendor\sqlite\sqlite3.c" />
     <ClCompile Remove="vendor\detours\detours.cpp" />
     <ClCompile Remove="vendor\detours\disasm.cpp" />
     <ClCompile Remove="vendor\detours\modules.cpp" />
@@ -1622,8 +1630,6 @@
     <ClInclude Include="src\server\ui\activity_host\activity_host_sdk_behavior_view.h" />
     <ClInclude Include="src\server\ui\activity_host\activity_host_scriptable_world_links.h" />
     <ClInclude Include="src\server\ui\activity_host\activity_host_sdk_squad_actions.h" />
-    <ClInclude Include="src\server\ui\activity_override\activity_override_panel.h" />
-    <ClInclude Include="src\server\ui\activity_override\activity_override_lists.h" />
     <ClInclude Include="src\server\bap\runtime.h" />
     <ClInclude Include="src\server\bap\activity_mission_seed_lease.h" />
     <ClInclude Include="src\server\bap\internal.h" />
@@ -2000,6 +2006,8 @@
     <ClInclude Include="src\middleware\gameplay\peer\peer_container.h" />
     <ClInclude Include="src\middleware\gameplay\peer\connect_messages.h" />
     <ClInclude Include="src\middleware\gameplay\peer\established_packet.h" />
+    <ClInclude Include="src\middleware\gameplay\peer\packet_fragments.h" />
+    <ClInclude Include="src\server\gameplay\peer\peer_packet_fragments.h" />
     <ClInclude Include="src\middleware\gameplay\external\common_state.h" />
     <ClInclude Include="src\middleware\gameplay\external\control_state_codec.h" />
     <ClInclude Include="src\middleware\gameplay\external\external_entity_codec.h" />
@@ -2066,7 +2074,6 @@
     <ClInclude Include="src\state\activity\receipts\definition.h" />
     <ClInclude Include="src\state\activity\receipts\activity_receipts.h" />
     <ClInclude Include="src\core\settings\server\activation\definition.h" />
-    <ClInclude Include="src\core\settings\settings_upgrade.h" />
     <ClInclude Include="src\middleware\gameplay\group\migration_messages.h" />
     <ClInclude Include="src\middleware\gameplay\group\notice_messages.h" />
     <ClInclude Include="src\server\gameplay\group\group_migration_receipts.h" />
@@ -2094,6 +2101,8 @@
     <ClInclude Include="src\server\activity\mission\mission_script_object_sense.h" />
     <ClInclude Include="src\server\activity\mission\mission_script_player_sense.h" />
     <ClInclude Include="src\server\activity\mission\mission_script_squad_sense.h" />
+    <ClInclude Include="src\server\activity\mission\mission_script_combatant_damage_sense.h" />
+    <ClInclude Include="src\server\activity\mission\mission_script_device_sense.h" />
     <ClInclude Include="src\server\activity\activity_sdk_behavior_scope.h" />
     <ClInclude Include="src\server\bap\encrypted\push\activity\mission_seed_world_change.h" />
     <ClInclude Include="src\server\bap\encrypted\queuez\queuez_reward_staging.h" />
@@ -2156,6 +2165,58 @@
     <ClInclude Include="src\state\progression\season_pass_reward_catalog.h" />
     <ClInclude Include="src\client\hooks\network\investment\lore_visibility_patch.h" />
     <ClCompile Include="src\client\hooks\network\investment\investment_lore_visibility.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\state\investment\investment_store_validation.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\state\investment\investment_reward_store.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="vendor\sqlite\sqlite3.h" />
+    <ClInclude Include="src\state\investment\store.h" />
+    <ClInclude Include="src\state\investment\store_internal.h" />
+    <None Include="vendor\sqlite\NOTICE.txt" />
+    <None Include="resources\database\investment_schema.sql" />
+    <None Include="resources\database\investment_defaults.sql" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\state\investment\investment_settings_store.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\state\account\inventory\inventory_seen_runtime.cpp" />
+    <ClInclude Include="src\state\account\inventory\seen_state.h" />
+    <None Include="resources\database\account_settings_schema.sql" />
+    <None Include="resources\database\account_settings_defaults.sql" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\state\activity_sdk\actor_sequences.h" />
+    <ClInclude Include="src\client\content\activity\activity_sdk_actor_sequences.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\client\ui\mission_launch\mission_launch_panel.cpp" />
+    <ClInclude Include="src\client\ui\mission_launch\mission_launch_panel.h" />
+    <ClInclude Include="src\client\ui\mission_launch\mission_launch_model.h" />
+    <ClInclude Include="src\client\ui\mission_launch\mission_launch_cards.h" />
+    <ClCompile Include="src\client\ui\mission_launch\mission_launch_art.cpp" />
+    <ClCompile Include="src\client\ui\mission_launch\mission_launch_lists.cpp" />
+    <ClInclude Include="src\client\ui\mission_launch\mission_launch_lists.h" />
+    <ClInclude Include="src\client\ui\mission_launch\mission_launch_art.h" />
+    <ClInclude Include="src\client\ui\mission_launch\mission_launch_manual.h" />
+    <ClInclude Include="src\client\ui\mission_launch\mission_launch_detail_style.h" />
+    <ClCompile Include="src\client\activity\mission_launch.cpp" />
+    <ClInclude Include="src\client\activity\mission_launch.h" />
+    <ClInclude Include="src\client\activity\mission_launch_options.h" />
+    <ClCompile Include="src\client\content\activity\activity_catalog_build.cpp" />
+    <ClInclude Include="src\client\content\activity\activity_catalog_build.h" />
+    <ClInclude Include="src\client\content\activity\activity_presentation_build.h" />
+    <ClInclude Include="src\client\content\activity\activity_menu_text_build.h" />
+    <ClCompile Include="src\state\build_data\activities\activity_catalog.cpp" />
+    <ClInclude Include="src\state\build_data\activities\activity_catalog.h" />
+    <ClInclude Include="src\state\build_data\activities\activity_artwork.h" />
+    <ClInclude Include="src\state\build_data\activities\activity_releases.h" />
+    <ClInclude Include="src\middleware\content\packages\tables\activity_table.h" />
+    <ClInclude Include="src\middleware\content\packages\tables\activity_presentation_table.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

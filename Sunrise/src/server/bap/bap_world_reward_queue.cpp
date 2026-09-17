@@ -1,131 +1,99 @@
-/** World reward queue: rewards earned outside a request, held until a peer can present one. */
-
-#include <array>
-#include <cstddef>
-#include <cstdint>
-
 #include "../../core/logging/log.h"
+#include "../../state/build_data/runtime.h"
+#include "../../state/investment/store_internal.h"
 #include "internal.h"
 
 namespace sunrise::server::bap {
 namespace {
 
-/** Rewards earned in world, oldest first, waiting for a Family-4 peer to present them. */
-std::array<WorldRewardRequest, kWorldRewardQueueCapacity> g_worldRewards{};
-std::size_t g_worldRewardHead{};
-std::size_t g_worldRewardCount{};
-
-/** Drops the oldest queued reward. */
-void pop_world_reward() noexcept {
-    g_worldRewards[g_worldRewardHead] = {};
-    g_worldRewardHead = (g_worldRewardHead + 1) % g_worldRewards.size();
-    --g_worldRewardCount;
-}
-
-/** Commits one reward straight into State, with no presentation. @return True when it lands. */
-[[nodiscard]] bool commit_world_reward(const WorldRewardRequest& request) noexcept {
+/** Grants and retires one earned reward in the same database transaction. */
+bool commit_world_reward(const WorldRewardRequest& request) noexcept {
+    state::investment::store::Transaction transaction;
+    if (!transaction.ready()) {
+        return false;
+    }
+    bool committed = false;
     if (request.kind == WorldRewardKind::item) {
-        state::PendingItemAcquisition acquisition{};
-        return state::prepare_item_acquisition_for_item(request.itemDefinitionIndex, acquisition)
-               && state::commit_item_acquisition(acquisition);
+        state::PendingItemAcquisition acquisition;
+        committed =
+            state::prepare_item_acquisition_for_item(request.itemDefinitionIndex, acquisition)
+            && state::commit_item_acquisition(acquisition);
+    } else {
+        state::PendingProfileItemAcquisition acquisition;
+        committed = state::prepare_profile_item_acquisition_for_item(
+                        request.itemDefinitionIndex, request.quantity, acquisition)
+                    && state::commit_profile_item_acquisition(acquisition);
     }
-    state::PendingProfileItemAcquisition acquisition{};
-    return state::prepare_profile_item_acquisition_for_item(
-               request.itemDefinitionIndex, request.quantity, acquisition)
-           && state::commit_profile_item_acquisition(acquisition);
+    return committed && complete_world_reward(request.id) && transaction.commit();
 }
 
-/**
- * Queues one reward for presentation, or commits it now when no peer can present it.
- * @param request Reward to grant.
- * @return True when the reward is queued or committed.
- */
-[[nodiscard]] bool enqueue_world_reward(WorldRewardRequest request) noexcept {
+/** Saves the reward under its stable definition hash and earning character. */
+bool enqueue_world_reward(std::uint16_t definitionIndex,
+                          std::int32_t quantity,
+                          WorldRewardKind kind) noexcept {
+    state::build_data::items::Definition definition;
+    if (!state::build_data::find_item_definition_index(definitionIndex, definition)
+        || !state::investment::store::enqueue_reward(
+            definition.definitionHash, quantity, static_cast<std::uint8_t>(kind))) {
+        return false;
+    }
     if (!has_active_family4_peer()) {
-        while (g_worldRewardCount != 0) {
-            if (!commit_world_reward(g_worldRewards[g_worldRewardHead])) {
-                core::log::write(core::log::Channel::server,
-                                 core::log::Level::warn,
-                                 "ev=world_reward stage=direct result=drop");
-            }
-            pop_world_reward();
-        }
-        return commit_world_reward(request);
+        settle_world_reward();
     }
-    if (g_worldRewardCount == g_worldRewards.size()) {
-        const bool committed = commit_world_reward(g_worldRewards[g_worldRewardHead]);
-        if (committed) {
-            arm_account_resync_everywhere();
-        }
-        pop_world_reward();
-        core::log::write(core::log::Channel::server,
-                         core::log::Level::warn,
-                         committed ? "ev=world_reward stage=queue_full result=direct"
-                                   : "ev=world_reward stage=queue_full result=drop");
-    }
-    g_worldRewards[(g_worldRewardHead + g_worldRewardCount) % g_worldRewards.size()] = request;
-    ++g_worldRewardCount;
     return true;
 }
 
 } // namespace
 
+/** Saves one item reward before its pickup presentation is queued. */
 bool arm_world_item_acquisition(std::uint16_t itemDefinitionIndex) noexcept {
-    return enqueue_world_reward({1, itemDefinitionIndex, WorldRewardKind::item});
+    return enqueue_world_reward(itemDefinitionIndex, 1, WorldRewardKind::item);
 }
 
+/** Saves a profile material reward before its pickup presentation is queued. */
 bool arm_world_profile_item_acquisition(std::uint16_t itemDefinitionIndex,
                                         std::int32_t quantity) noexcept {
-    if (quantity <= 0) {
-        return false;
-    }
-    return enqueue_world_reward({quantity, itemDefinitionIndex, WorldRewardKind::profileItem});
+    return quantity > 0
+           && enqueue_world_reward(itemDefinitionIndex, quantity, WorldRewardKind::profileItem);
 }
 
+/** Restores the oldest reward belonging to the selected character. */
 bool current_world_reward(WorldRewardRequest& request) noexcept {
-    if (g_worldRewardCount == 0) {
-        request = {};
+    request = {};
+    state::investment::store::PendingReward saved;
+    state::build_data::items::Definition definition;
+    if (!state::investment::store::next_reward(saved)
+        || !state::build_data::find_item_definition_hash(saved.definitionHash, definition)) {
         return false;
     }
-    request = g_worldRewards[g_worldRewardHead];
+    request.id = saved.id;
+    request.quantity = saved.quantity;
+    request.itemDefinitionIndex = definition.definitionIndex;
+    request.kind = static_cast<WorldRewardKind>(saved.kind);
     return true;
 }
 
-void complete_world_reward() noexcept {
-    if (g_worldRewardCount == 0) {
-        return;
-    }
-    pop_world_reward();
+/** Acknowledges exactly the reward whose inventory grant is being committed. */
+bool complete_world_reward(std::uint64_t id) noexcept {
+    return state::investment::store::complete_reward(id);
 }
 
-/** Commits the queued reward with no flyout once its presentation cannot be built. */
+/** A failed grant stays saved for a later attempt. */
 void settle_world_reward() noexcept {
-    if (g_worldRewardCount == 0) {
-        return;
-    }
-    const bool committed = commit_world_reward(g_worldRewards[g_worldRewardHead]);
-    pop_world_reward();
-    if (committed) {
+    WorldRewardRequest request;
+    if (current_world_reward(request) && commit_world_reward(request)) {
         arm_account_resync_everywhere();
     }
-    core::log::write(core::log::Channel::server,
-                     core::log::Level::warn,
-                     committed ? "ev=world_reward stage=settle result=direct"
-                               : "ev=world_reward stage=settle result=drop");
 }
 
-/** Commits every queued reward with no presentation and empties the queue. */
+/** Shutdown may grant ready rewards; rewards for other characters stay in the database. */
 void drain_world_rewards() noexcept {
-    while (g_worldRewardCount != 0) {
-        if (!commit_world_reward(g_worldRewards[g_worldRewardHead])) {
-            core::log::write(core::log::Channel::server,
-                             core::log::Level::warn,
-                             "ev=world_reward stage=shutdown result=drop");
+    WorldRewardRequest request;
+    while (current_world_reward(request)) {
+        if (!commit_world_reward(request)) {
+            break;
         }
-        pop_world_reward();
     }
-    g_worldRewards = {};
-    g_worldRewardHead = 0;
 }
 
 } // namespace sunrise::server::bap

@@ -186,7 +186,7 @@ struct Object {
     std::array<RosterMirrorEntry, kRosterMirrorCapacity> rosterMirror{};
     std::array<std::byte, kRosterDestinationPaddingSize> rosterDestinationPadding{};
     std::uint32_t lastOrbitedDestination{};
-    /** One bit per inventory row, set for every row the loadout occupies. */
+    /** One bit per inventory row, set while the item is unseen. */
     std::array<std::byte, kNewItemFlagByteCount> newItemFlags{};
     /** Per-row acknowledgement watermarks mirrored from the matching item instances. */
     std::array<std::int32_t, kInstanceProgressWatermarkCapacity> instanceProgressWatermarks{};

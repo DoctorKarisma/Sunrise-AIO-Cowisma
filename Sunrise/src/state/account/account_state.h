@@ -155,11 +155,7 @@ struct CharacterState {
      * makes both rollovers due the moment the client accepts the record.
      */
     std::uint64_t signInSeconds{};
-    /**
-     * Runtime-only socket entries the player has selected at least once. Selected entries still
-     * publish active; this mask keeps a later inactive entry acquired instead of new. Unverified:
-     * defaulted all-set, assuming the Client only allows clicking an already-acquired node.
-     */
+    /** Saved acquisition mask; the all-set default preserves the existing local policy. */
     std::uint64_t acquiredSubclassAbilityMask{~std::uint64_t{0}};
     /** Authored loadout keyed only by stable semantic equipment slots. */
     account::inventory::Equipment equipment;
@@ -171,10 +167,10 @@ struct CharacterState {
     std::uint32_t nextInventorySerial{};
 };
 
-/** Account identity shared by backend object families. */
+/** Call-local account snapshot shared by backend object families. */
 struct AccountState {
     std::uint64_t primarySoid{};
-    /** Economy policy comes from configuration, never from item-specific runtime constants. */
+    /** Economy rows come from the investment store. */
     std::array<DismantleRewardPolicy, kDismantleRewardPolicyCapacity> dismantleRewards{};
     std::size_t dismantleRewardCount{};
     /** Account-wide currencies and materials, placed by bucket rather than by authored slot. */

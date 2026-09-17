@@ -10,6 +10,7 @@
 
 #include "../build_data/runtime.h"
 #include "../investment/investment.h"
+#include "../investment/store_internal.h"
 #include "../progression/season_pass_reward_catalog.h"
 #include "../unlocks/definition.h"
 #include "../unlocks/unlocks_runtime.h"
@@ -198,8 +199,8 @@ struct CharacterArtifactWrite {
  * Writes the artifact ownership bits and the points-used counter into the character banks.
  * @param write Mapped sale rows with the mask and the used count to publish.
  */
-void publish_artifact_character_banks(CharacterArtifactWrite& write) noexcept {
-    unlocks::mutate(&write, [](void* context, unlocks::Table& table) noexcept {
+bool publish_artifact_character_banks(CharacterArtifactWrite& write) noexcept {
+    return unlocks::mutate(&write, [](void* context, unlocks::Table& table) noexcept {
         const auto& request = *static_cast<const CharacterArtifactWrite*>(context);
         for (std::size_t row = 0; row < request.count && row < 32; ++row) {
             const std::uint16_t mapped = (*request.rows)[row].characterFlagIndex;
@@ -240,20 +241,19 @@ void publish_artifact_character_banks(CharacterArtifactWrite& write) noexcept {
         return false;
     }
     CharacterArtifactWrite write{&rows, count, mask, used};
-    publish_artifact_character_banks(write);
-    return true;
+    return publish_artifact_character_banks(write);
 }
 
 /** Publishes the four seasonal progression lanes the current XP total implies. */
-void publish_experience_lanes(std::int32_t experience) noexcept {
-    (void)unlocks::set_account_progression(kArtifactPowerProgressionIndex, experience);
-    (void)unlocks::set_account_progression(kArtifactUnlockProgressionIndex, experience);
-    (void)unlocks::set_account_progression(pass::kProgressionDefinitionIndex,
-                                           (std::min)(experience, kMaximumPassExperience));
-    (void)unlocks::set_account_progression(pass::kHudProgressionDefinitionIndex,
-                                           experience < kMaximumPassExperience
-                                               ? experience % kExperiencePerRank
-                                               : experience - kMaximumPassExperience);
+bool publish_experience_lanes(std::int32_t experience) noexcept {
+    return unlocks::set_account_progression(kArtifactPowerProgressionIndex, experience)
+           && unlocks::set_account_progression(kArtifactUnlockProgressionIndex, experience)
+           && unlocks::set_account_progression(pass::kProgressionDefinitionIndex,
+                                               (std::min)(experience, kMaximumPassExperience))
+           && unlocks::set_account_progression(pass::kHudProgressionDefinitionIndex,
+                                               experience < kMaximumPassExperience
+                                                   ? experience % kExperiencePerRank
+                                                   : experience - kMaximumPassExperience);
 }
 
 } // namespace
@@ -266,19 +266,45 @@ std::int32_t seasonal_experience() noexcept {
 /** Publishes every seasonal value the seeded XP and artifact ownership imply. */
 bool seed_seasonal_progression() noexcept {
     const std::int32_t experience = seasonal_experience();
-    publish_experience_lanes(experience);
     SaleRows rows{};
     std::size_t count = 0;
     if (!sale_rows(rows, count)) {
         return false;
     }
-    AcquireSRWLockExclusive(&runtime::storage::g_stateLock);
-    Family5State& family = runtime::storage::g_state.investment.family5;
+    investment::store::g_mutex.lock();
+    investment::store::Transaction transaction;
+    Family5State family;
+    if (!transaction.ready() || !investment::store::read_family5(family)) {
+        investment::store::g_mutex.unlock();
+        return false;
+    }
     // An authored family-5 row still seeds ownership. The publish moves it to the character bank.
-    const std::uint32_t mask =
-        authored_artifact_mask_locked(family, rows, count) | artifact_mask(rows, count);
-    const bool published = publish_artifact_locked(family, mask, experience);
-    ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+    const std::uint32_t authoredMask = authored_artifact_mask_locked(family, rows, count);
+    if (authoredMask != 0) {
+        const AccountState account = investment::store::account();
+        for (std::size_t character = 0; character < account.characterCount; ++character) {
+            unlocks::Table banks;
+            if (!investment::store::read_unlocks(banks, static_cast<int>(character))) {
+                investment::store::g_mutex.unlock();
+                return false;
+            }
+            for (std::size_t row = 0; row < count && row < 32; ++row) {
+                const auto flag = rows[row].characterFlagIndex;
+                if ((authoredMask & (1U << row)) != 0 && flag < banks.characterObjectFlags.size()) {
+                    banks.characterObjectFlags[flag] = unlocks::kFlagSet;
+                }
+            }
+            if (!investment::store::write_unlocks(banks, static_cast<int>(character))) {
+                investment::store::g_mutex.unlock();
+                return false;
+            }
+        }
+    }
+    const std::uint32_t mask = artifact_mask(rows, count);
+    const bool published = publish_experience_lanes(experience)
+                           && publish_artifact_locked(family, mask, experience)
+                           && investment::store::write_family5(family) && transaction.commit();
+    investment::store::g_mutex.unlock();
     return published;
 }
 
@@ -291,8 +317,9 @@ std::uint16_t seasonal_rank() noexcept {
 
 /** @return Account-wide Power bonus published by the seasonal artifact. */
 std::uint16_t artifact_power_bonus() noexcept {
-    AcquireSRWLockShared(&runtime::storage::g_stateLock);
-    const Family5State& family = runtime::storage::g_state.investment.family5;
+    investment::store::g_mutex.lock();
+    Family5State family;
+    (void)investment::store::read_family5(family);
     std::int32_t bonus = 0;
     for (std::size_t index = 0; index < family.valueCount; ++index) {
         if (family.values[index].slot == kArtifactPowerBonusSlot) {
@@ -300,7 +327,7 @@ std::uint16_t artifact_power_bonus() noexcept {
             break;
         }
     }
-    ReleaseSRWLockShared(&runtime::storage::g_stateLock);
+    investment::store::g_mutex.unlock();
     return bonus > 0 ? static_cast<std::uint16_t>(bonus) : 0U;
 }
 
@@ -309,20 +336,27 @@ bool grant_seasonal_experience(std::int32_t amount) noexcept {
     if (amount <= 0) {
         return false;
     }
+    investment::store::Transaction transaction;
+    if (!transaction.ready()) {
+        return false;
+    }
     const std::int32_t previous = seasonal_experience();
     if (previous > (std::numeric_limits<std::int32_t>::max)() - amount) {
         return false;
     }
     const std::int32_t total = previous + amount;
-    publish_experience_lanes(total);
-    AcquireSRWLockExclusive(&runtime::storage::g_stateLock);
-    Family5State& family = runtime::storage::g_state.investment.family5;
+
+    Family5State family;
+    if (!transaction.ready() || !investment::store::read_family5(family)) {
+        return false;
+    }
     SaleRows rows{};
     std::size_t count = 0;
     const std::uint32_t mask = sale_rows(rows, count) ? artifact_mask(rows, count) : 0U;
-    (void)publish_artifact_locked(family, mask, total);
-    ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
-    return true;
+    const bool saved = publish_experience_lanes(total)
+                       && publish_artifact_locked(family, mask, total)
+                       && investment::store::write_family5(family) && transaction.commit();
+    return saved;
 }
 
 /** @return True when this Season pass reward row is already claimed. */
@@ -371,13 +405,19 @@ bool replace_artifact_mod_mask(std::uint32_t expected, std::uint32_t replacement
         return false;
     }
     const std::int32_t experience = seasonal_experience();
-    AcquireSRWLockExclusive(&runtime::storage::g_stateLock);
-    Family5State& family = runtime::storage::g_state.investment.family5;
+    investment::store::g_mutex.lock();
+    investment::store::Transaction transaction;
+    Family5State family;
+    if (!transaction.ready() || !investment::store::read_family5(family)) {
+        investment::store::g_mutex.unlock();
+        return false;
+    }
     bool replaced = artifact_mask(rows, count) == expected;
     if (replaced) {
-        replaced = publish_artifact_locked(family, replacement, experience);
+        replaced = publish_artifact_locked(family, replacement, experience)
+                   && investment::store::write_family5(family) && transaction.commit();
     }
-    ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+    investment::store::g_mutex.unlock();
     return replaced;
 }
 
@@ -406,15 +446,21 @@ bool prepare_artifact_mod_unlock(std::uint16_t saleIndex,
     const std::uint32_t bit = 1U << saleIndex;
     const std::int32_t experience = seasonal_experience();
     const std::uint16_t earned = artifact_points_earned_for(experience);
-    AcquireSRWLockExclusive(&runtime::storage::g_stateLock);
-    Family5State& family = runtime::storage::g_state.investment.family5;
+    investment::store::g_mutex.lock();
+    investment::store::Transaction transaction;
+    Family5State family;
+    if (!transaction.ready() || !investment::store::read_family5(family)) {
+        investment::store::g_mutex.unlock();
+        return false;
+    }
     const std::uint32_t before = artifact_mask(rows, count);
     const std::uint16_t used = points_used(before);
     bool prepared = (before & bit) == 0 && used < earned && used >= column_tier(saleIndex);
     if (prepared) {
-        prepared = publish_artifact_locked(family, before | bit, experience);
+        prepared = publish_artifact_locked(family, before | bit, experience)
+                   && investment::store::write_family5(family) && transaction.commit();
     }
-    ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+    investment::store::g_mutex.unlock();
     if (!prepared) {
         return false;
     }
@@ -433,18 +479,13 @@ bool commit_artifact_mod_unlock(PendingArtifactPurchase& mutation) noexcept {
     const PendingArtifactPurchase prepared = mutation;
     mutation = {};
     const AccountState account = account_snapshot();
-    const bool current =
-        prepared.prepared && prepared.accountSoid != 0 && prepared.characterSoid != 0
-        && prepared.beforeMask != prepared.afterMask
-        && prepared.characterIndex < account.characterCount
-        && account.primarySoid == prepared.accountSoid
-        && account.characters[prepared.characterIndex].soid == prepared.characterSoid
-        && account.characters[prepared.characterIndex].selected
-        && artifact_mod_mask() == prepared.afterMask;
-    if (!current && prepared.prepared) {
-        (void)replace_artifact_mod_mask(prepared.afterMask, prepared.beforeMask);
-    }
-    return current;
+    return prepared.prepared && prepared.accountSoid != 0 && prepared.characterSoid != 0
+           && prepared.beforeMask != prepared.afterMask
+           && prepared.characterIndex < account.characterCount
+           && account.primarySoid == prepared.accountSoid
+           && account.characters[prepared.characterIndex].soid == prepared.characterSoid
+           && account.characters[prepared.characterIndex].selected
+           && artifact_mod_mask() == prepared.afterMask;
 }
 
 } // namespace sunrise::state

@@ -164,6 +164,7 @@ bool resolve_item(const authored_inventory::Item& authored,
     candidate.item.equipmentSlot = nativeEquipmentSlot;
     candidate.item.mutationSerial = authored.mutationSerial;
     candidate.item.flags = authored.flags;
+    candidate.item.seen = authored.seen;
     if (!resolve_quantity(authored, itemDetail, candidate.item.quantity)
         || !resolve_ordinary_sockets(authored.sockets,
                                      itemDetail,

@@ -28,7 +28,8 @@ constexpr std::size_t kBucketIdentityCapacity = 256;
 /** Places one profile item in the next free row of its inventory bucket. */
 [[nodiscard]] bool place_profile_item(const state::account::inventory::ProfileItem& item,
                                       std::array<std::uint16_t, kBucketIdentityCapacity>& taken,
-                                      std::span<inventory::layout::Entry> rows) noexcept {
+                                      std::span<inventory::layout::Entry> rows,
+                                      std::span<std::uint32_t> newItems) noexcept {
     state::build_data::items::Definition definition{};
     state::build_data::items::details::Definition detail{};
     state::build_data::inventory::buckets::Descriptor bucket{};
@@ -62,6 +63,11 @@ constexpr std::size_t kBucketIdentityCapacity = 256;
     rows[slot].instanceSoid = item.instanceSoid;
     rows[slot].quantity = item.quantity;
     rows[slot].mutationSerial = item.mutationSerial;
+    // Each profile bitmap word covers 32 inventory rows.
+    constexpr std::size_t kWordBits = 32;
+    if (!item.seen) {
+        newItems[slot / kWordBits] |= 1U << (slot % kWordBits);
+    }
     return true;
 }
 
@@ -69,6 +75,20 @@ constexpr std::size_t kBucketIdentityCapacity = 256;
 
 /** Encodes a sentinel-correct account object from live State. */
 bool encode(const state::AccountState& state, std::span<std::byte> output) noexcept {
+    state::unlocks::Table unlocks;
+    return state::unlocks::snapshot(unlocks) && encode(state, output, unlocks);
+}
+
+/**
+ * Account-wide unlocks use the supplied snapshot; per-character flags still use saved state.
+ * @param state Account identity, roster, preferences, and inventory to encode.
+ * @param output Receives the account object; unchanged on failure.
+ * @param unlocks Account unlocks from the same live or prepared view as state.
+ * @return False when state, saved flags, mappings, or output bounds are invalid.
+ */
+bool encode(const state::AccountState& state,
+            std::span<std::byte> output,
+            const state::unlocks::Table& unlocks) noexcept {
     if (state.primarySoid == 0 || !state::account::valid(state)
         || output.size() < layout::kMinimumSize) {
         return false;
@@ -83,13 +103,16 @@ bool encode(const state::AccountState& state, std::span<std::byte> output) noexc
         return false;
     }
 
-    const state::unlocks::Table& unlocks = state::unlocks::get();
     object.acquiredFlags = unlocks.accountFlags;
     object.profileUnlockFlags = unlocks.profileFlags;
     object.objectiveValues = unlocks.objectiveValues;
 
-    for (layout::CharacterUnlockBlock& block : object.characterUnlocks) {
-        block.flags = unlocks.characterFlags;
+    for (std::size_t index = 0; index < state.characterCount; ++index) {
+        state::unlocks::Table character;
+        if (!state::unlocks::snapshot(character, static_cast<int>(index))) {
+            return false;
+        }
+        object.characterUnlocks[index].flags = character.characterFlags;
     }
     object.publicityExpiries.fill(kSuppressedPublicityDeadline);
     object.seenMessages.fill(kSeenMessageByte);
@@ -106,7 +129,8 @@ bool encode(const state::AccountState& state, std::span<std::byte> output) noexc
     // Profile rows are sentinelled above, so placement only has to claim its own slots.
     std::array<std::uint16_t, kBucketIdentityCapacity> takenSlots{};
     for (std::size_t index = 0; index < state.profileItemCount; ++index) {
-        if (!place_profile_item(state.profileItems[index], takenSlots, object.profileItems)) {
+        if (!place_profile_item(
+                state.profileItems[index], takenSlots, object.profileItems, object.newItemFlags)) {
             return false;
         }
     }

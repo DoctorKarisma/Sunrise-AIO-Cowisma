@@ -18,6 +18,7 @@
 #include "../../state/activity_sdk/runtime.h"
 #include "../../state/content_manifest/content_manifest_state_runtime.h"
 #include "../../state/entitlements/entitlement_runtime.h"
+#include "../../state/investment/store.h"
 #include "../../state/runtime/runtime.h"
 #include "../../state/unlocks/unlocks_runtime.h"
 #include "../filesystem/path.h"
@@ -40,8 +41,11 @@ constexpr std::wstring_view kInstalledPackagesDirectory = L"packages";
 
 /** Initializes the base State before content-authenticated generated artifacts are considered. */
 [[nodiscard]] bool initialize_state(void* module) noexcept {
-    return state::initialize(
-        module, settings::get().initialAccount, settings::get().initialActivityDefaults);
+    if (!state::investment::store::initialize(module)) {
+        return false;
+    }
+    return state::investment::store::validate()
+           && state::initialize(module, settings::get().initialActivityDefaults);
 }
 
 /** Copies the live public installed-content fingerprint without retaining State-owned memory. */
@@ -149,7 +153,6 @@ bool initialize(void* module) noexcept {
         // Settings name their own failure; the sinks do not exist yet to carry a second line.
         return false;
     }
-    state::unlocks::publish(settings::get().initialUnlocks);
     // One stage per step, so a boot failure names the step instead of the whole expression.
     const char* stage = nullptr;
     if (!log::initialize(module, settings::get().logging)) {
@@ -165,8 +168,7 @@ bool initialize(void* module) noexcept {
             stage = "ui_hud";
         } else if (!ui::modules::logs::initialize()) {
             stage = "ui_logs";
-        } else if (!state::entitlements::publish(settings::get().server.entitlements)) {
-            stage = "entitlements";
+
         } else if (!initialize_state(module)) {
             stage = "state";
         } else if (!initialize_content_manifest(module)) {
@@ -192,12 +194,10 @@ bool initialize(void* module) noexcept {
         state::content_manifest::shutdown();
         state::activity_sdk::shutdown();
         state::shutdown();
-        state::entitlements::clear();
         ui::modules::logs::shutdown();
         ui::modules::hud::shutdown();
         ui::modules::registry::shutdown();
         ui::runtime::shutdown();
-        state::unlocks::clear();
         log::shutdown();
         settings::shutdown();
         return false;
@@ -224,13 +224,11 @@ bool shutdown() noexcept {
     state::content_manifest::shutdown();
     state::activity_sdk::shutdown();
     state::shutdown();
-    state::entitlements::clear();
     ui::modules::logs::shutdown();
     ui::modules::hud::shutdown();
     ui::modules::registry::shutdown();
     ui::runtime::shutdown();
     log::write(log::Channel::core, log::Level::info, "ev=shutdown result=ok");
-    state::unlocks::clear();
     log::shutdown();
     settings::shutdown();
     return true;

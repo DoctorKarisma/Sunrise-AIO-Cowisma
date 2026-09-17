@@ -565,17 +565,25 @@ template <typename ReadBody>
     if (!skip_optional_scalar(reader, kInt32Encoding)) {
         return false;
     }
-    // 0.1.2.1: client-local one-bit mirror; traversal-only.
-    if (!skip_optional_scalar(reader, kBoolEncoding)) {
+    bool present = false;
+    std::uint64_t value = 0;
+    if (!read_optional_scalar(reader, kBoolEncoding, present, value)) {
         return false;
     }
-    // 0.1.2.2: client-local VSync mirror.
-    if (!skip_optional_scalar(reader, kInt8ThreeBitEncoding)) {
+    if (present && !delta.social.voiceChatEnabled.has_value()) {
+        delta.social.voiceChatEnabled = value != 0;
+    }
+    if (!read_optional_scalar(reader, kInt8ThreeBitEncoding, present, value)) {
         return false;
     }
-    // 0.1.2.3: client-local FOV mirror.
-    if (!skip_optional_scalar(reader, kInt32Encoding)) {
+    if (present) {
+        delta.display.verticalSyncInterval = static_cast<std::uint8_t>(value);
+    }
+    if (!read_optional_scalar(reader, kInt32Encoding, present, value)) {
         return false;
+    }
+    if (present) {
+        delta.display.fieldOfView = as_int32(value);
     }
 
     // 0.1.2.4: authored keybinding source and routing input for the optional table.
@@ -612,9 +620,18 @@ template <typename ReadBody>
            && reader.skip(kBooleanWidthBits);
 }
 
-/** Consumes present fixed-width group 0.1.5. */
-[[nodiscard]] bool skip_group_0_1_5(Reader& reader) noexcept {
-    return reader.skip(fixed_array_width_bits(kGroup_0_1_5ValueCount, kScalar32WidthBits));
+/** Reads the profile new-item bitmap carried by group 0.1.5. */
+[[nodiscard]] bool read_new_items(Reader& reader, Request& output) noexcept {
+    state::account::inventory::ProfileNewItems bits{};
+    for (auto& word : bits) {
+        std::uint64_t value = 0;
+        if (!reader.read(kScalar32WidthBits, value)) {
+            return false;
+        }
+        word = static_cast<std::uint32_t>(value);
+    }
+    output.newItems = bits;
+    return true;
 }
 
 /** Consumes present nested entry array 0.1.6.0. */
@@ -671,7 +688,9 @@ template <typename ReadBody>
     }
 
     // 0.1.5: 22 required 32-bit values.
-    if (!read_optional_group(reader, skip_group_0_1_5)) {
+    if (!read_optional_group(reader, [&output](Reader& groupReader) noexcept {
+            return read_new_items(groupReader, output);
+        })) {
         return false;
     }
 

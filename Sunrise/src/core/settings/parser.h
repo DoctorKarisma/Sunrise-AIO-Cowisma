@@ -24,6 +24,9 @@ public:
     /** Parses the root object on top of the caller's defaults. */
     [[nodiscard]] bool parse_root(Settings& output) noexcept;
 
+    /** Reads only the root version; a missing version is zero. */
+    [[nodiscard]] bool parse_version(std::uint32_t& output) noexcept;
+
 private:
     /** Parses the Core settings object. */
     [[nodiscard]] bool core(Settings& output) noexcept;
@@ -42,14 +45,6 @@ private:
     [[nodiscard]] bool activation_settings(server::activation::Settings& output) noexcept;
     /** Parses the gameplay endpoint block. Topology, addresses, port and reserve must agree. */
     [[nodiscard]] bool gameplay_settings(server::gameplay::Settings& output) noexcept;
-    /**
-     * Parses the authored entitlement array, replacing the bundled policy.
-     * Array order is the handle order the Client finds definitions by, so rows are kept as
-     * configured.
-     */
-    [[nodiscard]] bool entitlements(state::entitlements::Table& output) noexcept;
-    /** Parses one entitlement. It needs a bounded name and a supported ownership form. */
-    [[nodiscard]] bool entitlement(state::entitlements::Entitlement& output) noexcept;
     /** Parses Steam settings. Each supported object may appear at most once. */
     [[nodiscard]] bool steam_settings(steam::Settings& output) noexcept;
     /** Parses the single local Steam user. Its persona must be unique and bounded. */
@@ -68,78 +63,6 @@ private:
     /** Parses the arrival override table, which has to fit fixed storage. */
     [[nodiscard]] bool
     arrival_overrides(state::activity::defaults::ActivityDefaults& output) noexcept;
-    /** Parses the unlock table. */
-    [[nodiscard]] bool unlocks(state::unlocks::Table& output) noexcept;
-    /** Fills the flag bank from authored runs. */
-    [[nodiscard]] bool flag_runs(std::span<std::uint8_t> bank) noexcept;
-    /** Fills the flag bank from authored indices. */
-    [[nodiscard]] bool flag_indices(std::span<std::uint8_t> bank) noexcept;
-    /** Fills the objective bank from authored signed values. */
-    [[nodiscard]] bool objective_values(std::span<std::int32_t> bank) noexcept;
-    /** Fills the progression bank from authored values. */
-    [[nodiscard]] bool progression_values(state::unlocks::ProgressionBank& bank) noexcept;
-    /** Parses the investment group: family-5 overrides and the catalyst gate. */
-    [[nodiscard]] bool investment(Settings& output) noexcept;
-    /** Fills the flag-override list from [slot, value] pairs, each within its bounds. */
-    [[nodiscard]] bool unlock_flag_overrides(state::Family5State& output) noexcept;
-    /** Fills the signed value-override list from [slot, value] pairs, each within its bounds. */
-    [[nodiscard]] bool unlock_value_overrides(state::Family5State& output) noexcept;
-    /** Parses the account object. */
-    [[nodiscard]] bool account(state::AccountState& output) noexcept;
-    /** Parses the character array, in configuration order, up to the playable size. */
-    [[nodiscard]] bool characters(state::AccountState& output) noexcept;
-    /**
-     * Parses the account-wide item array, in configuration order.
-     * A profile item names only its definition and quantity. Its slot is not authored: the
-     * inventory bucket the definition belongs to names the first slot of that bucket's run.
-     */
-    [[nodiscard]] bool profile_items(state::AccountState& output) noexcept;
-    /** Parses the definition-driven ordinary-gear dismantle payout. */
-    [[nodiscard]] bool dismantle_rewards(state::AccountState& output) noexcept;
-    /** Parses one character identity. The object must contain one nonzero SOID. */
-    [[nodiscard]] bool character(state::CharacterState& output) noexcept;
-
-    /** Parses the equipment object. Every slot name must be known and appear at most once. */
-    [[nodiscard]] bool equipment(state::account::inventory::Equipment& output) noexcept;
-    /** Parses the unequipped inventory array, in authored bucket-placement order. */
-    [[nodiscard]] bool
-    character_inventory(state::account::inventory::CharacterItems& output) noexcept;
-    /** Parses one item. Every required named field must appear exactly once. */
-    [[nodiscard]] bool equipment_item(state::account::inventory::Item& output) noexcept;
-    /** Parses the socket policy: null for the native default, or up to 12 hash-or-null lanes. */
-    [[nodiscard]] bool equipment_plugs(state::account::inventory::Sockets& output) noexcept;
-    /** Parses one definition hash: any 32-bit value except the engine no-definition sentinel. */
-    [[nodiscard]] bool inventory_definition_hash(std::uint32_t& output) noexcept;
-    /** Parses the grouped account settings. Its migration latch has to be complete. */
-    [[nodiscard]] bool account_settings(state::account::settings::AccountSettings& output) noexcept;
-
-    // --- Account setting groups ---------------------------------------------------------------
-    // Each takes Sunrise-owned names and writes bounded value types. None exposes a record offset.
-
-    /** Parses controller and mouse settings. */
-    [[nodiscard]] bool controls_settings(state::account::settings::Controls& output) noexcept;
-    /** Parses voice, volume and migration settings. */
-    [[nodiscard]] bool audio_settings(state::account::settings::Audio& output) noexcept;
-    /** Parses screen and renderer settings. */
-    [[nodiscard]] bool display_settings(state::account::settings::Display& output) noexcept;
-    /** Parses HUD and text settings. */
-    [[nodiscard]] bool interface_settings(state::account::settings::Interface& output) noexcept;
-    /** Parses matchmaking and chat settings. */
-    [[nodiscard]] bool social_settings(state::account::settings::Social& output) noexcept;
-
-    /** Parses the action table. Every action appears once, with both input halves. */
-    [[nodiscard]] bool
-    key_bindings(state::account::settings::bindings::KeyBindings& output) noexcept;
-    /** Parses one binding. Both halves appear exactly once; null means unbound. */
-    [[nodiscard]] bool key_binding(state::account::settings::bindings::Binding& output) noexcept;
-    /** Parses one input name, or null for unbound. Numbers are not accepted. */
-    [[nodiscard]] bool optional_input_code(std::optional<std::uint16_t>& output) noexcept;
-    /**
-     * Turns one input name into its input code.
-     * @param name Key name, or one modifier and the key it prefixes joined by "+".
-     */
-    [[nodiscard]] static bool input_code_value(std::string_view name,
-                                               std::uint16_t& output) noexcept;
     /** Parses logging sinks and channel levels. */
     [[nodiscard]] bool logging(log::Settings& output) noexcept;
     /** Parses named channel levels and ignores unknown channels. */

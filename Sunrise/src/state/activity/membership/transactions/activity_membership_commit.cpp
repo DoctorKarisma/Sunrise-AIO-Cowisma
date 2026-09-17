@@ -6,6 +6,7 @@
 #include "../../events/activity_event_selection.h"
 #include "../activity_membership_query.h"
 #include "internal.h"
+#include "state/investment/store_internal.h"
 
 namespace sunrise::state::activity::membership {
 namespace {
@@ -142,6 +143,8 @@ bool commit(PendingMutation& mutation, CommittedClientState* clientState) noexce
         return false;
     }
 
+    const std::lock_guard accountGuard(investment::store::g_mutex);
+    const auto primarySoid = investment::store::account().primarySoid;
     AcquireSRWLockExclusive(&runtime::storage::g_stateLock);
     auto& root = runtime::storage::g_state;
     ActivityState& state = root.activity;
@@ -150,7 +153,7 @@ bool commit(PendingMutation& mutation, CommittedClientState* clientState) noexce
                      && record.joined && record.joinedRevision != kInvalidRevision
                      && record.sessionId == prepared.sessionId
                      && record.recordRevision == prepared.expectedRecordRevision
-                     && root.account.primarySoid == prepared.expectedPrimarySoid;
+                     && primarySoid == prepared.expectedPrimarySoid;
     if (committed && prepared.kind == MutationKind::identity) {
         committed = commit_identity(state, record, prepared);
     } else if (committed && prepared.kind == MutationKind::authoritative) {

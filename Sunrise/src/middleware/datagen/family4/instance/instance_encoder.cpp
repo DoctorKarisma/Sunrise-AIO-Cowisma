@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cstring>
 
-#include "../../../../state/build_data/runtime.h"
 #include "abi.h"
 #include "layout.h"
 
@@ -151,13 +150,7 @@ bool encode(const ResolvedInstance& input, std::span<std::byte> output) noexcept
             const std::optional<std::uint16_t>& plug = input.ordinarySockets.plugs[index];
             if (plug.has_value()) {
                 object.ordinarySockets.sockets[index].plugDefinitionIndex = *plug;
-                // The client reads each socket's own plug definition hash here. A wrong value
-                // blanks the socket's render, so an unresolved hash keeps the zero fill.
-                state::build_data::items::Definition plugDefinition{};
-                if (state::build_data::find_item_definition_index(*plug, plugDefinition)) {
-                    object.ordinarySockets.sockets[index].auxiliaryHashes.fill(
-                        plugDefinition.definitionHash);
-                }
+                // Auxiliary fields stay zero; nonzero values change the available plug choices.
             }
         }
     }

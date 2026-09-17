@@ -40,10 +40,7 @@ inline constexpr std::uint8_t kFlagSet = 2;
  */
 inline constexpr std::uint8_t kFlagClear = 0;
 
-/**
- * Authored unlock policy published once for the process.
- * Every bank is expanded at parse time, so readers copy bytes with no run decoding.
- */
+/** Call-local unlock banks expanded from the investment store. */
 struct Table {
     std::array<std::uint8_t, kAccountFlagCapacity> accountFlags{};
     std::array<std::uint8_t, kProfileFlagCapacity> profileFlags{};

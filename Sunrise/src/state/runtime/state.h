@@ -47,9 +47,7 @@ struct BapState {
 struct State {
     SignOnState signOn;
     BapState bap;
-    AccountState account;
     activity::ActivityState activity;
-    InvestmentState investment;
     matchmaking::MatchmakingState matchmaking;
     steam::SteamState steam;
 };

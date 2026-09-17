@@ -13,7 +13,8 @@ namespace sunrise::state::unlocks {
 void publish(const Table& table) noexcept;
 
 /** @return The live unlock banks. Every writer runs on the server thread. */
-[[nodiscard]] const Table& get() noexcept;
+[[nodiscard]] Table get() noexcept;
+[[nodiscard]] bool snapshot(Table& output, int characterSlot = -1) noexcept;
 
 /** Restores empty unlock banks. */
 void clear() noexcept;
@@ -24,7 +25,7 @@ void clear() noexcept;
  * @param context Passed through untouched.
  * @param apply Called once with the live banks.
  */
-void mutate(void* context, void (*apply)(void*, Table&) noexcept) noexcept;
+bool mutate(void* context, void (*apply)(void*, Table&) noexcept) noexcept;
 
 /** @param index Account flag bank row. @return True when the flag is set. */
 [[nodiscard]] bool account_flag_set(std::uint16_t index) noexcept;

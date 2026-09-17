@@ -28,6 +28,7 @@ struct ResolvedItem {
     /** Accumulated native item-state bits copied into the native inventory row. */
     std::uint32_t flags{};
     instance::ResolvedInstance instance{};
+    bool seen{};
 };
 
 /** One item instance together with the native equipment slot that owns it. */

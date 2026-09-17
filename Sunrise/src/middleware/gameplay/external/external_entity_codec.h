@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <bitset>
 #include <cstddef>
 #include <cstdint>
 
@@ -11,8 +12,9 @@
 
 namespace sunrise::middleware::gameplay::external {
 
-/** Fixed server storage bounds one decoded entity lane to sixteen records. */
-inline constexpr std::size_t kEntityBatchCapacity = 16;
+/** The native packet scheduler admits at most 256 records across its external lanes. */
+inline constexpr std::size_t kEntityBatchCapacity =
+    state::gameplay::entity_identity::kObservationBatchCapacity;
 /** The native prelude carries a one-bit auxiliary count. */
 inline constexpr std::size_t kEntityAuxiliaryCapacity = 1;
 /** A token slot is the low 13 bits of the 17-bit wire token. */
@@ -86,14 +88,14 @@ struct EntityBatch {
     std::uint8_t allocationEpoch{};
     bool hasAllocationEpoch{};
     std::uint64_t allocationDomain{};
-    std::uint16_t ignoredRecordMask{};
+    std::bitset<kEntityBatchCapacity> ignoredRecordMask{};
     std::array<EntityToken, kEntityAuxiliaryCapacity> auxiliaryTokens{};
     EntityRecord record{};
     std::array<EntityRecord, kEntityBatchCapacity - 1> additionalRecords{};
     std::uint16_t currentCell{kNoEntityCell};
     std::uint8_t auxiliaryCount{};
     bool recordPresent{};
-    std::uint8_t additionalRecordCount{};
+    std::uint16_t additionalRecordCount{};
 };
 
 [[nodiscard]] inline std::size_t entity_record_count(const EntityBatch& batch) noexcept {

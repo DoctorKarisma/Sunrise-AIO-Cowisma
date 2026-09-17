@@ -3,6 +3,7 @@
 #include "../../../runtime/storage/internal.h"
 #include "../activity_membership_query.h"
 #include "internal.h"
+#include "state/investment/store_internal.h"
 
 namespace sunrise::state::activity::membership {
 
@@ -15,11 +16,13 @@ bool prepare_authoritative(std::uint64_t sessionId,
         return false;
     }
 
+    const std::lock_guard accountGuard(investment::store::g_mutex);
+    const auto primarySoid = investment::store::account().primarySoid;
     AcquireSRWLockShared(&runtime::storage::g_stateLock);
     const auto& root = runtime::storage::g_state;
     PendingMutation prepared{};
     const SessionRecord* record =
-        transactions::prepare_base(root.activity, root.account.primarySoid, sessionId, prepared);
+        transactions::prepare_base(root.activity, primarySoid, sessionId, prepared);
     bool ready = record != nullptr;
     if (ready) {
         const MembershipState merged = transactions::merge(record->membership, update);

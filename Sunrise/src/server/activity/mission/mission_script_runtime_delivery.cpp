@@ -3,6 +3,7 @@
 #include <string_view>
 
 #include "../../bap/runtime.h"
+#include "../../gameplay/squad_entity_retirement.h"
 #include "mission_script_runtime_internal.h"
 
 // The delivery state machine: the four stages and the timeout reconcilers. A
@@ -220,6 +221,12 @@ void complete_delivery(RuntimeInstance& instance) noexcept {
     case lua_vm::IntentKind::bindCombatantToSquad:
         result = "combatant_binding_staged";
         break;
+    case lua_vm::IntentKind::stopAuthoredScene:
+        result = "scene_stop_staged";
+        break;
+    case lua_vm::IntentKind::signalAuthoredScene:
+        result = "scene_event_staged";
+        break;
     case lua_vm::IntentKind::activateAuthoredScene:
         result = "scene_staged";
         break;
@@ -249,6 +256,9 @@ void complete_delivery(RuntimeInstance& instance) noexcept {
         break;
     case lua_vm::IntentKind::playPerformance:
         result = "performance_staged";
+        break;
+    case lua_vm::IntentKind::playActorSequence:
+        result = "actor_sequence_staged";
         break;
     case lua_vm::IntentKind::resetObjectives:
         result = "objective_reset_staged";
@@ -332,6 +342,10 @@ void refuse_delivery(RuntimeInstance& instance,
     }
     lua_vm::consume_intent(instance.vm);
     queue_effect_result(instance, intent, outcome);
+    if (intent.retirePlacedProps) {
+        server::gameplay::squad_entity_retirement::cancel_placed_transition(
+            instance.view.binding, instance.view.activityClientGeneration, intent.requestKey);
+    }
     clear_delivery(instance);
     log_line(core::log::Level::warn, &instance, "intent_refused", result, {}, reason);
 }

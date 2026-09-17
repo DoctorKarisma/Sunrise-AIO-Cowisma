@@ -10,6 +10,7 @@
 #include <variant>
 
 #include "../../middleware/web_service/messages/opcode206.h"
+#include "../../state/account/inventory/seen_state.h"
 #include "../../state/runtime/runtime.h"
 
 namespace sunrise::server::web_service {
@@ -161,10 +162,12 @@ void report_subclass_selection_response(const middleware::web_service::Message& 
  * the action was refused or the reply could not be encoded.
  * @return False only when the envelope header does not parse.
  */
-[[nodiscard]] bool consume(std::span<const std::byte> request,
-                           std::span<std::byte> response,
-                           std::size_t& written,
-                           Outcome& outcome) noexcept;
+[[nodiscard]] bool
+consume(std::span<const std::byte> request,
+        std::span<std::byte> response,
+        std::size_t& written,
+        Outcome& outcome,
+        std::span<const state::account::inventory::PresentedItemRow> presentation = {}) noexcept;
 
 /** Encodes the normal refusal shape for a request that may publish resident references. */
 [[nodiscard]] bool encode_resident_dependent_refusal(std::span<const std::byte> request,

@@ -11,8 +11,6 @@ inline constexpr std::uint16_t kDefaultBapPort = 30974;
 
 /** Read-only Server settings. */
 struct Settings {
-    /** Authored ownership policy declared by SignOn and defined by the content manifest. */
-    state::entitlements::Table entitlements{};
     /** Gameplay UDP endpoint topology. Disabled leaves the channel unpublished. */
     gameplay::Settings gameplay{};
     /** Per-domain gates for the default client-activation work. */

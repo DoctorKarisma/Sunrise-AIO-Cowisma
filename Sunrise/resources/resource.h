@@ -45,3 +45,12 @@
 #define SUNRISE_VER_BUILD 0
 /** The same version as display text. Windows shows this string, not the four fields. */
 #define SUNRISE_VER_STRING "0.4.0.0"
+
+/** SQLite schema, default rows, and upstream notice are embedded in the DLL. */
+#define IDR_INVESTMENT_SCHEMA 106
+#define IDR_INVESTMENT_DEFAULTS 107
+#define IDR_SQLITE_NOTICE 108
+
+/** Account preferences have their own schema and seed data in the save. */
+#define IDR_ACCOUNT_SETTINGS_SCHEMA 109
+#define IDR_ACCOUNT_SETTINGS_DEFAULTS 110

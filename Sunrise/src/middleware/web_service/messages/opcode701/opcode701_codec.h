@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 
+#include "../../../../state/account/inventory/seen_state.h"
 #include "../../../../state/account/settings/settings_delta.h"
 #include "../../web_service_envelope.h"
 
@@ -13,6 +15,7 @@ inline constexpr std::uint16_t kOpcode = 701;
 /** Semantic result decoded from one schema-0x80807603 request. */
 struct Request {
     state::account::settings::SettingsDelta settings;
+    std::optional<state::account::inventory::ProfileNewItems> newItems;
     /** Preference path 0.1.1.0; false when the body leaves that preference absent. */
     bool profileSetupCompleted{};
 };

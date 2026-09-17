@@ -5,6 +5,7 @@
 #include "../../../runtime/storage/internal.h"
 #include "../activity_membership_query.h"
 #include "internal.h"
+#include "state/investment/store_internal.h"
 
 namespace sunrise::state::activity::membership {
 
@@ -17,11 +18,13 @@ bool prepare_identity(std::uint64_t sessionId,
         return false;
     }
 
+    const std::lock_guard accountGuard(investment::store::g_mutex);
+    const auto primarySoid = investment::store::account().primarySoid;
     AcquireSRWLockShared(&runtime::storage::g_stateLock);
     const auto& root = runtime::storage::g_state;
     PendingMutation prepared{};
     const SessionRecord* record =
-        transactions::prepare_base(root.activity, root.account.primarySoid, sessionId, prepared);
+        transactions::prepare_base(root.activity, primarySoid, sessionId, prepared);
     bool ready = record != nullptr && transactions::valid_identity(identity, record->memberKey);
     if (ready) {
         const bool changed = !record->membership.hasIdentity
@@ -60,11 +63,13 @@ bool prepare_refresh(std::uint64_t sessionId,
         return false;
     }
 
+    const std::lock_guard accountGuard(investment::store::g_mutex);
+    const auto primarySoid = investment::store::account().primarySoid;
     AcquireSRWLockShared(&runtime::storage::g_stateLock);
     const auto& root = runtime::storage::g_state;
     PendingMutation prepared{};
     const SessionRecord* record =
-        transactions::prepare_base(root.activity, root.account.primarySoid, sessionId, prepared);
+        transactions::prepare_base(root.activity, primarySoid, sessionId, prepared);
     if (record != nullptr) {
         if (record->membership.hasIdentity) {
             prepared.snapshot = transactions::make_snapshot(
@@ -91,11 +96,13 @@ bool prepare_republish(std::uint64_t sessionId, PendingMutation& mutation) noexc
         return false;
     }
 
+    const std::lock_guard accountGuard(investment::store::g_mutex);
+    const auto primarySoid = investment::store::account().primarySoid;
     AcquireSRWLockShared(&runtime::storage::g_stateLock);
     const auto& root = runtime::storage::g_state;
     PendingMutation prepared{};
     const SessionRecord* record =
-        transactions::prepare_base(root.activity, root.account.primarySoid, sessionId, prepared);
+        transactions::prepare_base(root.activity, primarySoid, sessionId, prepared);
     const bool ready = record != nullptr && record->membership.hasIdentity
                        && root.activity.stateRevision != activity::kMaximumRevision
                        && record->membership.revision != kMaximumMembershipRevision;
@@ -123,11 +130,13 @@ bool prepare_acknowledgement(std::uint64_t sessionId,
         return false;
     }
 
+    const std::lock_guard accountGuard(investment::store::g_mutex);
+    const auto primarySoid = investment::store::account().primarySoid;
     AcquireSRWLockShared(&runtime::storage::g_stateLock);
     const auto& root = runtime::storage::g_state;
     PendingMutation prepared{};
     const SessionRecord* record =
-        transactions::prepare_base(root.activity, root.account.primarySoid, sessionId, prepared);
+        transactions::prepare_base(root.activity, primarySoid, sessionId, prepared);
     bool ready = record != nullptr;
     if (ready) {
         const bool changed = record->membership.hasIdentity

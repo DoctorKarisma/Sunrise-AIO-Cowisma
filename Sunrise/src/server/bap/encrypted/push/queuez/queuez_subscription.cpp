@@ -211,11 +211,6 @@ void append_queuez_notification(Scratch& scratch,
         return;
     }
     after = stagedAfter;
-    // The client sends its subscribe just before it writes the record state, so this first copy
-    // arrives while the record still reads its previous state and is refused. Family zero has
-    // nothing else behind it, so the delayed copy is the one that lands.
-    armsBannerRepush = subscription.familyType == queuez::kBannerFamilyType;
-
     if (subscription.familyType == queuez::kRosterFamilyType && !stagedAfter.family4Active) {
         queuez::SessionState companionAfter{};
         if (append_family4_companion(scratch,
@@ -241,7 +236,6 @@ void append_queuez_notification(Scratch& scratch,
                                        written,
                                        bannerDelivered)) {
             after = bannerDelivered;
-            armsBannerRepush = true;
         }
     }
 }

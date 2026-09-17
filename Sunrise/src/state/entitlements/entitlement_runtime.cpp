@@ -1,35 +1,24 @@
 #include "entitlement_runtime.h"
 
+#include "../investment/store.h"
 #include "validation.h"
 
 namespace sunrise::state::entitlements {
-namespace {
 
-/** @return Process-wide policy storage, seeded with the bundled policy on first use. */
-[[nodiscard]] Table& storage() noexcept {
-    static Table table = authored();
+/** @return A call-local ownership table from the saved account. */
+Table get() noexcept {
+    Table table;
+    (void)snapshot(table);
     return table;
 }
 
-} // namespace
-
-/** Publishes the immutable ownership policy for this process. */
-bool publish(const Table& table) noexcept {
-    if (!valid(table)) {
+/** An unavailable ownership table must not become a successful partial response. */
+bool snapshot(Table& output) noexcept {
+    if (!investment::store::read_entitlements(output) || !valid(output)) {
+        output = {};
         return false;
     }
-    storage() = table;
     return true;
-}
-
-/** @return The active ownership policy, or the bundled policy when none was published. */
-const Table& get() noexcept {
-    return storage();
-}
-
-/** Restores the bundled ownership policy. */
-void clear() noexcept {
-    storage() = authored();
 }
 
 } // namespace sunrise::state::entitlements

@@ -9,7 +9,7 @@ namespace sunrise::steam::interfaces::methods {
 namespace {
 
 /** @return The authored ownership policy. It also lists installed DLC. */
-[[nodiscard]] const state::entitlements::Table& policy() noexcept {
+[[nodiscard]] state::entitlements::Table policy() noexcept {
     return state::entitlements::get();
 }
 

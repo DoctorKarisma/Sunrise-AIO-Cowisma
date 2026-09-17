@@ -95,8 +95,10 @@ void complete_request(HttpRequestResult& result, LONG status, std::size_t size) 
  */
 [[nodiscard]] bool encode_view(void* context, const state::content_manifest::View& view) noexcept {
     auto& encode = *static_cast<EncodeContext*>(context);
-    return middleware::content::manifest::encode(
-        state::entitlements::get(), view.rows, view.guid, encode.output, encode.size);
+    state::entitlements::Table ownership;
+    return state::entitlements::snapshot(ownership)
+           && middleware::content::manifest::encode(
+               ownership, view.rows, view.guid, encode.output, encode.size);
 }
 
 /** Exact ABI of the fetch wrapper this replacement stands in for. */

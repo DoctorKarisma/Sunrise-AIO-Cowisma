@@ -17,6 +17,7 @@
 #include "../../core/settings/settings.h"
 #include "../activity/defaults/activity_defaults_validation.h"
 #include "../build_data/runtime.h"
+#include "../investment/store_internal.h"
 #include "../unlocks/unlocks_records.h"
 #include "equipment/configured_equipment_identity.h"
 #include "runtime.h"
@@ -38,13 +39,6 @@ namespace {
 constexpr std::uint32_t kLoopbackAddress = 0x7F000001;
 /** Default one-hour lifetime for generated SignOn session tokens. */
 constexpr std::uint32_t kDefaultTokenLifetimeSeconds = 3600;
-/** Family 5 uses the largest signed 64-bit value as its process-global object key. */
-constexpr std::uint64_t kGlobalFamily5Soid =
-    static_cast<std::uint64_t>((std::numeric_limits<std::int64_t>::max)());
-/** Global unlock-value slot named by the installed build's season constants. */
-constexpr std::uint16_t kActiveSeasonValueSlot = 607;
-/** One-based season number carried by the Season of Arrivals definition. */
-constexpr std::int32_t kSeasonOfArrivalsNumber = 11;
 /** Glimmer item definition, the currency an artifact reset charges. */
 constexpr std::uint32_t kGlimmerHash = 3159615086U;
 
@@ -68,7 +62,8 @@ constexpr std::uint32_t kGlimmerHash = 3159615086U;
 [[nodiscard]] bool same_profile_item(const account::inventory::ProfileItem& left,
                                      const account::inventory::ProfileItem& right) noexcept {
     return left.instanceSoid == right.instanceSoid && left.definitionHash == right.definitionHash
-           && left.quantity == right.quantity && left.mutationSerial == right.mutationSerial;
+           && left.quantity == right.quantity && left.mutationSerial == right.mutationSerial
+           && left.seen == right.seen;
 }
 
 /** Restores artifact-mod sockets to their manifest-declared initial plugs. */
@@ -124,25 +119,6 @@ constexpr std::uint32_t kGlimmerHash = 3159615086U;
 }
 
 /**
- * Makes one process-owned global value authoritative without disturbing authored overrides.
- * @return False only when a new row is needed and the bounded family-5 list is full.
- */
-[[nodiscard]] bool
-upsert_family5_value(Family5State& family, std::uint16_t slot, std::int32_t value) noexcept {
-    for (std::size_t index = 0; index < family.valueCount; ++index) {
-        if (family.values[index].slot == slot) {
-            family.values[index].value = value;
-            return true;
-        }
-    }
-    if (family.valueCount >= family.values.size()) {
-        return false;
-    }
-    family.values[family.valueCount++] = UnlockValueOverride{slot, value};
-    return true;
-}
-
-/**
  * Fills fixed secret storage with Windows system randomness.
  * @tparam Size Required secret byte count.
  * @param output Secret storage to overwrite.
@@ -172,31 +148,6 @@ void secure_reset(State& state) noexcept {
     // State is too large for a stack temporary, so the reset reconstructs it in place.
     state.~State();
     new (&state) State{};
-}
-
-/** Seeds canonical character row generations before installed build data is needed. */
-[[nodiscard]] bool seed_inventory_runtime_fields(AccountState& accountState) noexcept {
-    if (!account::valid_authored(accountState)) {
-        return false;
-    }
-    for (std::size_t characterIndex = 0; characterIndex < accountState.characterCount;
-         ++characterIndex) {
-        CharacterState& character = accountState.characters[characterIndex];
-        std::uint32_t next = 0;
-        for (std::optional<account::inventory::Item>& item : character.equipment.slots) {
-            if (item.has_value()) {
-                item->mutationSerial = static_cast<std::int32_t>(next++);
-            }
-        }
-        for (std::size_t index = 0; index < character.inventory.count; ++index) {
-            character.inventory.values[index].mutationSerial = static_cast<std::int32_t>(next++);
-        }
-        for (std::size_t index = 0; index < character.stacks.count; ++index) {
-            character.stacks.values[index].mutationSerial = static_cast<std::int32_t>(next++);
-        }
-        character.nextInventorySerial = next;
-    }
-    return account::valid(accountState);
 }
 
 /**
@@ -273,32 +224,29 @@ void secure_reset(State& state) noexcept {
 /**
  * Loads build data and generates secrets with Sunrise's authored activity defaults.
  * @param module Loaded Sunrise module, or null to disable disk persistence.
- * @param initialAccount Empty State, or a complete checked account from Core settings.
  * @return True when the cached data passes its checks and every secret gets random bytes.
  */
-bool initialize(void* module, const AccountState& initialAccount) noexcept {
-    return initialize(module, initialAccount, activity::defaults::authored());
+bool initialize(void* module) noexcept {
+    return initialize(module, activity::defaults::authored());
 }
 
 /**
  * Loads build data and publishes fixed activity defaults in one step.
  * @param module Loaded Sunrise module, or null to disable disk persistence.
- * @param initialAccount Empty State, or a complete checked account from Core settings.
  * @param activityDefaults Complete local fallback policy from immutable Core settings.
  * @return True when account, defaults, cached data, and generated secrets are valid.
  */
 bool initialize(void* module,
-                const AccountState& initialAccount,
                 const activity::defaults::ActivityDefaults& activityDefaults) noexcept {
     // AccountState and State are multi-megabyte fixed-capacity values. Keeping both as locals
     // exceeds the game's startup-thread stack before this function can execute any code.
-    const std::unique_ptr<AccountState> runtimeAccount{new (std::nothrow)
-                                                           AccountState(initialAccount)};
+    const std::unique_ptr<AccountState> runtimeAccount{new (std::nothrow) AccountState{}};
     const std::unique_ptr<State> initialized{new (std::nothrow) State{}};
     if (!runtimeAccount || !initialized) {
         return false;
     }
-    if (!seed_inventory_runtime_fields(*runtimeAccount)
+    investment::store::Transaction transaction;
+    if (!transaction.ready() || !investment::store::read_account(*runtimeAccount)
         || !activity::defaults::valid(activityDefaults)) {
         return false;
     }
@@ -340,30 +288,11 @@ bool initialize(void* module,
     // The published relay port is the one the listener binds, so both move with one setting.
     initialized->signOn.relayPort = core::settings::get().server.bapPort;
     initialized->signOn.tokenLifetimeSeconds = kDefaultTokenLifetimeSeconds;
-    initialized->account = *runtimeAccount;
-    initialized->activity.defaults = activityDefaults;
-    initialized->investment.family5.objectSoid = kGlobalFamily5Soid;
-    // Only the override lists come from settings. Identity and gate stay owned by State.
-    const Family5State& authored = core::settings::get().initialFamily5;
-    initialized->investment.family5.flags = authored.flags;
-    initialized->investment.family5.flagCount = authored.flagCount;
-    initialized->investment.family5.values = authored.values;
-    initialized->investment.family5.valueCount = authored.valueCount;
-    if (!upsert_family5_value(
-            initialized->investment.family5, kActiveSeasonValueSlot, kSeasonOfArrivalsNumber)) {
-        secure_reset(*initialized);
+    if (!investment::store::write_account(*runtimeAccount)) {
         build_data::shutdown();
         return false;
     }
-    // The arm is account-wide and rides the first ws-503, sent before any character is picked.
-    // The per-character objB byte still decides which character it opens.
-    for (std::size_t index = 0; index < runtimeAccount->characterCount; ++index) {
-        if (runtimeAccount->characters[index].contentBypass) {
-            initialized->investment.family5.contentGateArm = true;
-            break;
-        }
-    }
-
+    initialized->activity.defaults = activityDefaults;
     // Publish one complete State only after every generated secret is valid.
     AcquireSRWLockExclusive(&runtime::storage::g_stateLock);
     secure_reset(runtime::storage::g_state);
@@ -373,7 +302,7 @@ bool initialize(void* module,
     // The seeded banks decide every derived bar, gate and seasonal counter, so both run last.
     (void)seed_seasonal_progression();
     unlocks::records::seed();
-    return true;
+    return transaction.commit();
 }
 
 /** Securely erases State, including activity destinations and matchmaking descriptors. */
@@ -382,6 +311,7 @@ void shutdown() noexcept {
     secure_reset(runtime::storage::g_state);
     ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
     build_data::shutdown();
+    investment::store::shutdown();
 }
 
 /** @return Immutable generated SignOn session fields. */
@@ -391,13 +321,16 @@ const SignOnState& sign_on() noexcept {
 
 /** Ensures every native profile action source has one unique runtime item-instance key. */
 bool ensure_profile_item_identities() noexcept {
-    AcquireSRWLockExclusive(&runtime::storage::g_stateLock);
-    AccountState candidate = runtime::storage::g_state.account;
+    investment::store::g_mutex.lock();
+    AccountState candidate = investment::store::account();
     const bool ready = canonicalize_profile_item_identities(candidate);
     if (ready) {
-        runtime::storage::g_state.account = candidate;
+        if (!investment::store::write_account(candidate)) {
+            investment::store::g_mutex.unlock();
+            return false;
+        }
     }
-    ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+    investment::store::g_mutex.unlock();
     return ready;
 }
 
@@ -418,12 +351,7 @@ bool publish_bootstrap_token(std::span<const std::byte> token) noexcept {
 
 /** Records when the account signed in, on every character the account owns. */
 void publish_sign_in_time(std::uint64_t seconds) noexcept {
-    AcquireSRWLockExclusive(&runtime::storage::g_stateLock);
-    AccountState& accountState = runtime::storage::g_state.account;
-    for (std::size_t index = 0; index < accountState.characterCount; ++index) {
-        accountState.characters[index].signInSeconds = seconds;
-    }
-    ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+    investment::store::set_sign_in_time(seconds);
 }
 
 /** @return Immutable generated BAP session fields. */
@@ -444,10 +372,11 @@ bool new_bap_session(BapState& output) noexcept {
 
 /** Copies one complete evaluated content state with build-derived catalyst overrides. */
 bool investment_snapshot(InvestmentState& output) noexcept {
-    AcquireSRWLockShared(&runtime::storage::g_stateLock);
-    InvestmentState snapshot = runtime::storage::g_state.investment;
-    ReleaseSRWLockShared(&runtime::storage::g_stateLock);
-    if (!build_data::complete_exotic_catalyst_investment(snapshot.family5)) {
+    investment::store::g_mutex.lock();
+    InvestmentState snapshot;
+    const bool loaded = investment::store::read_family5(snapshot.family5);
+    investment::store::g_mutex.unlock();
+    if (!loaded || !build_data::complete_exotic_catalyst_investment(snapshot.family5)) {
         core::log::write(core::log::Channel::state,
                          core::log::Level::warn,
                          "ev=investment stage=snapshot result=fail reason=catalyst");
@@ -464,6 +393,10 @@ bool investment_snapshot(InvestmentState& output) noexcept {
  */
 bool reset_artifact(std::int32_t glimmerCost, ArtifactResetResult& result) noexcept {
     result = {};
+    investment::store::Transaction transaction;
+    if (!transaction.ready()) {
+        return false;
+    }
     if (glimmerCost <= 0) {
         return false;
     }
@@ -562,25 +495,18 @@ bool reset_artifact(std::int32_t glimmerCost, ArtifactResetResult& result) noexc
         return false;
     }
 
-    AcquireSRWLockExclusive(&runtime::storage::g_stateLock);
-    bool current = runtime::detail::same_profile_inventory(runtime::storage::g_state.account,
-                                                           before.profileItems,
-                                                           before.profileItemCount)
-                   && runtime::storage::g_state.account.characterCount == before.characterCount;
-    const AccountState& live = runtime::storage::g_state.account;
+    const AccountState live = investment::store::account();
+    bool current =
+        runtime::detail::same_profile_inventory(live, before.profileItems, before.profileItemCount)
+        && live.characterCount == before.characterCount;
     for (std::size_t index = 0; current && index < before.characterCount; ++index) {
         current = runtime::detail::same_character(live.characters[index], before.characters[index]);
     }
-    if (current) {
-        runtime::storage::g_state.account = candidate;
+    if (!current || !investment::store::write_account(candidate) || !transaction.commit()) {
+        return false;
     }
-    ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
-    if (!current) {
-        (void)replace_artifact_mod_mask(0, previousMods);
-    } else {
-        result = changed;
-    }
-    return current;
+    result = changed;
+    return true;
 }
 
 } // namespace sunrise::state

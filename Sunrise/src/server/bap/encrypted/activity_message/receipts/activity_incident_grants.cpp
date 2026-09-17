@@ -1,9 +1,8 @@
+#include "state/investment/store_internal.h"
 /**
  * Applies the state change a collectible report implies, once its outer body has passed.
  * The incident's own targets name the object. Nothing here reads the running game client.
  */
-
-#include "activity_incident_grants.h"
 
 #include <algorithm>
 #include <array>
@@ -22,6 +21,7 @@
 #include "../../../../../state/runtime/runtime.h"
 #include "../../../../../state/unlocks/unlocks_records.h"
 #include "../../../../bap/internal.h"
+#include "activity_incident_grants.h"
 
 namespace sunrise::server::bap::encrypted::activity_message::receipts {
 
@@ -394,7 +394,7 @@ void grant_random_moon_loot() noexcept {
  * Applies the state change one accepted collectible report implies.
  * @param incident Outer-valid incident whose targets name the reported object.
  */
-void apply_incident_grants(const message::incident::Incident& incident) noexcept {
+static void stage_incident_grants(const message::incident::Incident& incident) noexcept {
     // Preserve the common-header size gate before acting on the incident.
     if (incident.payloadLength < 13) {
         return;
@@ -494,6 +494,20 @@ void apply_incident_grants(const message::incident::Incident& incident) noexcept
         if (progress_changed(unlock_records::advance_objective(kLetThemEatRiceCakesFlag))) {
             bap::arm_account_resync_everywhere();
         }
+    }
+}
+
+/** Commits collectible progress and every reward earned by the same report together. */
+void apply_incident_grants(const message::incident::Incident& incident) noexcept {
+    state::investment::store::Transaction transaction;
+    if (!transaction.ready()) {
+        return;
+    }
+    stage_incident_grants(incident);
+    if (!transaction.commit()) {
+        core::log::write(core::log::Channel::server,
+                         core::log::Level::error,
+                         "ev=incident_grant result=fail reason=store");
     }
 }
 

@@ -51,6 +51,8 @@ static void apply_display(const DisplayDelta& update, Display& target) noexcept 
     apply_if_present(update.brightness, target.brightness);
     apply_if_present(update.showFps, target.showFps);
     apply_if_present(update.hdrMode, target.hdrMode);
+    apply_if_present(update.verticalSyncInterval, target.verticalSyncInterval);
+    apply_if_present(update.fieldOfView, target.fieldOfView);
     apply_if_present(update.calibrationPrimary, target.calibrationPrimary);
     apply_if_present(update.calibrationAlpha, target.calibrationAlpha);
 }

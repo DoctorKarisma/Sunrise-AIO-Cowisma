@@ -98,7 +98,7 @@ struct Binding {
 /** Fixed authored input table independent of the native packed account representation. */
 struct KeyBindings {
     std::array<Binding, kActionCount> values;
-    /** True only when configuration supplied every supported action. */
+    /** True after every supported action has been loaded. */
     bool configured{};
 
     bool operator==(const KeyBindings&) const = default;

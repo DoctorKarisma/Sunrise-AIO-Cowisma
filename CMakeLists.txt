@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.31)
-project(Sunrise CXX)
+project(Sunrise C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -17,6 +17,8 @@ file(GLOB_RECURSE VENDOR_SOURCES CONFIGURE_DEPENDS
     "Sunrise/vendor/imgui/*.h"
     "Sunrise/vendor/lua/*.c"
     "Sunrise/vendor/lua/*.h"
+    "Sunrise/vendor/sqlite/*.c"
+    "Sunrise/vendor/sqlite/*.h"
 )
 # Lua builds as C++ here, matching the MSVC project's CompileAsCpp setting.
 file(GLOB_RECURSE LUA_SOURCES CONFIGURE_DEPENDS
@@ -27,6 +29,7 @@ file(GLOB_RECURSE RESOURCE_FILES CONFIGURE_DEPENDS
     "Sunrise/resources/*.rc"
     "Sunrise/resources/*.h"
     "Sunrise/resources/*.json"
+    "Sunrise/resources/*.sql"
 )
 
 add_library(steam_api64 SHARED
@@ -60,6 +63,7 @@ target_include_directories(steam_api64 SYSTEM PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/Sunrise/vendor/imgui"
     "${CMAKE_CURRENT_SOURCE_DIR}/Sunrise/vendor/imgui/backends"
     "${CMAKE_CURRENT_SOURCE_DIR}/Sunrise/vendor/lua"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Sunrise/vendor/sqlite"
 )
 
 if(DEFINED XWIN_DIR)
@@ -128,4 +132,8 @@ set_target_properties(steam_api64 PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build/x64/$<CONFIG>"
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build/x64/$<CONFIG>"
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build/x64/$<CONFIG>"
+)
+
+set_source_files_properties(Sunrise/vendor/sqlite/sqlite3.c PROPERTIES
+    COMPILE_DEFINITIONS "SQLITE_OMIT_LOAD_EXTENSION;SQLITE_THREADSAFE=1"
 )

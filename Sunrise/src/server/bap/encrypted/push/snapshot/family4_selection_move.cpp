@@ -97,8 +97,10 @@ bool apply_acquisition_presentation(
         row.quantity = item->quantity;
         row.mutationSerial = item->mutationSerial;
         row.flags = item->flags;
-        characterObject.newItemFlags[presentation.inventoryRow / kBitsPerFlagByte] |=
-            std::byte{1U} << (presentation.inventoryRow % kBitsPerFlagByte);
+        if (!item->seen) {
+            characterObject.newItemFlags[presentation.inventoryRow / kBitsPerFlagByte] |=
+                std::byte{1U} << (presentation.inventoryRow % kBitsPerFlagByte);
+        }
         characterObject.instanceProgressWatermarks[presentation.inventoryRow] = 1;
     }
     return true;

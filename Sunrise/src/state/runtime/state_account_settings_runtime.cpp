@@ -1,4 +1,5 @@
 #include "../account/settings/settings_delta.h"
+#include "../investment/store_internal.h"
 #include "runtime.h"
 #include "storage/internal.h"
 
@@ -42,8 +43,8 @@ bool commit_settings_update(PendingSettingsUpdate& mutation) noexcept {
         return false;
     }
 
-    AcquireSRWLockExclusive(&runtime::storage::g_stateLock);
-    AccountState candidate = runtime::storage::g_state.account;
+    investment::store::g_mutex.lock();
+    AccountState candidate = investment::store::account();
     bool committed = false;
 
     if (candidate.primarySoid == prepared.accountSoid) {
@@ -53,13 +54,12 @@ bool commit_settings_update(PendingSettingsUpdate& mutation) noexcept {
         } else if (candidate.settings == prepared.beforeSettings) {
             candidate.settings = prepared.afterSettings;
             if (account::valid(candidate)) {
-                runtime::storage::g_state.account = candidate;
-                committed = true;
+                committed = investment::store::write_settings(candidate.settings);
             }
         }
     }
 
-    ReleaseSRWLockExclusive(&runtime::storage::g_stateLock);
+    investment::store::g_mutex.unlock();
     return committed;
 }
 

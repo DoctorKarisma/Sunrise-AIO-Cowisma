@@ -9,6 +9,41 @@ namespace sunrise::core::settings::parser {
 /** @param input Complete JSON text, borrowed and never changed. */
 Parser::Parser(std::string_view input) noexcept : input_(input) {}
 
+/** Reads the version without interpreting settings from an older schema. */
+bool Parser::parse_version(std::uint32_t& output) noexcept {
+    output = 0;
+    if (!consume('{')) {
+        return false;
+    }
+    if (consume('}')) {
+        return at_end();
+    }
+    bool found = false;
+    for (;;) {
+        std::string_view key;
+        if (!string(key) || !consume(':')) {
+            return false;
+        }
+        if (key == "version") {
+            std::uint64_t value = 0;
+            if (found || !unsigned_integer(value)
+                || value > (std::numeric_limits<std::uint32_t>::max)()) {
+                return false;
+            }
+            output = static_cast<std::uint32_t>(value);
+            found = true;
+        } else if (!skip_value(0)) {
+            return false;
+        }
+        if (consume('}')) {
+            return at_end();
+        }
+        if (!consume(',')) {
+            return false;
+        }
+    }
+}
+
 /** Parses the supported root object and skips unknown top-level values. */
 bool Parser::parse_root(Settings& output) noexcept {
     if (!consume('{')) {
@@ -36,6 +71,10 @@ bool Parser::parse_root(Settings& output) noexcept {
             }
             output.version = static_cast<std::uint32_t>(value);
             hasVersion = true;
+        } else if (key == "complete_exotic_catalysts") {
+            if (!boolean(output.completeExoticCatalysts)) {
+                return false;
+            }
         } else if (key == "core") {
             if (hasCore || !core(output)) {
                 return false;
@@ -227,7 +266,7 @@ Settings defaults() noexcept {
         .completeExoticCatalysts = true,
         .logging = log::defaults(),
         .activitySdkGeneration = {},
-        .server = server::Settings{state::entitlements::authored()},
+        .server = server::Settings{},
         .initialActivityDefaults = state::activity::defaults::authored(),
     };
 }

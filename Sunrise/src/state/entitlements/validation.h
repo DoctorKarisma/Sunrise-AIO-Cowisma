@@ -30,7 +30,4 @@ namespace sunrise::state::entitlements {
 [[nodiscard]] bool
 owned_identifier(const Table& table, std::size_t index, std::uint32_t& identifier) noexcept;
 
-/** @return The bundled ownership policy used when settings supply none. */
-[[nodiscard]] Table authored() noexcept;
-
 } // namespace sunrise::state::entitlements

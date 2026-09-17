@@ -279,7 +279,7 @@ void observed_entity_adapter(const void* context,
                                batch.allocationDomain);
     const external::EntityBatch* projected = &batch;
     std::unique_ptr<external::EntityBatch> filtered;
-    if (batch.ignoredRecordMask != 0) {
+    if (batch.ignoredRecordMask.any()) {
         filtered.reset(new (std::nothrow) external::EntityBatch{});
         if (!filtered) {
             return;
@@ -287,7 +287,7 @@ void observed_entity_adapter(const void* context,
         *filtered = batch;
         std::size_t count = 0;
         for (std::size_t index = 0; index < external::entity_record_count(batch); ++index) {
-            if ((batch.ignoredRecordMask & (1U << index)) == 0) {
+            if (!batch.ignoredRecordMask.test(index)) {
                 external::entity_record_at(*filtered, count++) =
                     external::entity_record_at(batch, index);
             }
@@ -296,8 +296,8 @@ void observed_entity_adapter(const void* context,
             return;
         }
         filtered->recordPresent = true;
-        filtered->additionalRecordCount = static_cast<std::uint8_t>(count - 1);
-        filtered->ignoredRecordMask = 0;
+        filtered->additionalRecordCount = static_cast<std::uint16_t>(count - 1);
+        filtered->ignoredRecordMask.reset();
         projected = filtered.get();
     }
     if (!accept_entity_batch(source.groupSessionId, *projected)) {
