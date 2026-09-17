@@ -1836,3 +1836,4 @@
     <ResourceCompile Include="resources\sunrise.rc" />
   </ItemGroup>
 </Project>
+

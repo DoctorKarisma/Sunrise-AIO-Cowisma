@@ -1,6 +1,7 @@
 #include "weapon_editor_panel.h"
 
 #include "core/filesystem/path.h"
+#include "core/logging/log.h"
 #include "core/ui/toast/ui_toast_runtime.h"
 #include "middleware/crypto/random_bytes.h"
 #include "server/bap/runtime.h"
@@ -36,6 +37,7 @@
 #include "state/build_data/items/socket_plugs/socket_plug_catalog.h"
 #include "state/build_data/runtime.h"
 #include "state/runtime/runtime.h"
+#include "state/runtime/subclass_ability_override.h"
 
 #ifdef interface
 
@@ -215,6 +217,8 @@ enum class EditorPage : std::uint8_t {
     weapons,
 
     armor,
+
+    subclass,
 
     randomizer,
 
@@ -952,6 +956,11 @@ void rebuild_armor(const state::CharacterState& character) {
 
         return g_activeArmorSlot < kArmorSlotNames.size() ? kArmorSlotNames[g_activeArmorSlot]
                                                           : "ARMOR";
+    }
+
+    if (g_editorPage == EditorPage::subclass) {
+
+        return "SUBCLASS";
     }
 
     return "RANDOMIZER";
@@ -5873,6 +5882,1468 @@ void set_editor_page(EditorPage page) noexcept {
     return clicked;
 }
 
+enum class SubclassEditorSlot : std::uint8_t {
+    movement = 0,
+    grenade = 1,
+    super = 2,
+    melee = 3,
+    classAbility = 4,
+};
+
+struct SubclassEditorSource {
+    std::uint32_t definitionHash{};
+    std::uint16_t definitionIndex{};
+    std::uint16_t socketEntryListIndex{};
+    state::CharacterClass characterClass{state::CharacterClass::titan};
+    std::string name{};
+};
+
+struct SubclassEditorChoice {
+    std::uint16_t sourceSocketEntryListIndex{};
+    state::build_data::abilities::Selection sourceSelection{};
+    std::uint8_t sourceEntry{};
+    std::uint8_t sourceBucket{};
+    std::uint8_t sourcePath{0xFF};
+    std::uint32_t primaryHash{};
+    state::CharacterClass characterClass{state::CharacterClass::titan};
+    std::string sourceName{};
+    std::string label{};
+};
+
+[[nodiscard]] const char* subclass_editor_slot_label(SubclassEditorSlot slot) noexcept {
+    switch (slot) {
+    case SubclassEditorSlot::movement: return "MOVEMENT";
+    case SubclassEditorSlot::grenade: return "GRENADE";
+    case SubclassEditorSlot::super: return "SUPER / PATH";
+    case SubclassEditorSlot::melee: return "MELEE";
+    case SubclassEditorSlot::classAbility: return "CLASS ABILITY";
+    }
+    return "ABILITY";
+}
+
+[[nodiscard]] bool subclass_name_is(std::string_view name, std::string_view expected) noexcept {
+    if (expected.empty() || name.size() < expected.size()) {
+        return false;
+    }
+    for (std::size_t start = 0; start + expected.size() <= name.size(); ++start) {
+        bool match = true;
+        for (std::size_t index = 0; index < expected.size(); ++index) {
+            const unsigned char left = static_cast<unsigned char>(name[start + index]);
+            const unsigned char right = static_cast<unsigned char>(expected[index]);
+            if (std::tolower(left) != std::tolower(right)) {
+                match = false;
+                break;
+            }
+        }
+        if (match) {
+            return true;
+        }
+    }
+    return false;
+}
+
+[[nodiscard]] const char* known_subclass_ability_name(std::string_view subclassName,
+                                                       SubclassEditorSlot slot,
+                                                       std::uint8_t entry) noexcept {
+    // Shared class abilities / movement are authored identically across each class's 3 subclasses.
+    const auto hunter_shared = [slot, entry]() noexcept -> const char* {
+        if (slot == SubclassEditorSlot::classAbility) {
+            if (entry == 2) return "Marksman's Dodge";
+            if (entry == 3) return "Gambler's Dodge";
+        } else if (slot == SubclassEditorSlot::movement) {
+            if (entry == 4) return "High Jump";
+            if (entry == 5) return "Strafe Jump";
+            if (entry == 6) return "Triple Jump";
+        }
+        return nullptr;
+    };
+    const auto titan_shared = [slot, entry]() noexcept -> const char* {
+        if (slot == SubclassEditorSlot::classAbility) {
+            if (entry == 2) return "Towering Barricade";
+            if (entry == 3) return "Rally Barricade";
+        } else if (slot == SubclassEditorSlot::movement) {
+            if (entry == 4) return "High Lift";
+            if (entry == 5) return "Strafe Lift";
+            if (entry == 6) return "Catapult Lift";
+        }
+        return nullptr;
+    };
+    const auto warlock_shared = [slot, entry]() noexcept -> const char* {
+        if (slot == SubclassEditorSlot::classAbility) {
+            if (entry == 2) return "Healing Rift";
+            if (entry == 3) return "Empowering Rift";
+        } else if (slot == SubclassEditorSlot::movement) {
+            if (entry == 4) return "Strafe Glide";
+            if (entry == 5) return "Burst Glide";
+            if (entry == 6) return "Balanced Glide";
+        }
+        return nullptr;
+    };
+
+    if (subclass_name_is(subclassName, "Gunslinger")) {
+        if (const char* shared = hunter_shared()) return shared;
+        if (slot == SubclassEditorSlot::grenade) {
+            if (entry == 7) return "Tripmine Grenade";
+            if (entry == 8) return "Incendiary Grenade";
+            if (entry == 9) return "Swarm Grenade";
+        } else if (slot == SubclassEditorSlot::super) {
+            if (entry == 10) return "Golden Gun";
+            if (entry == 20) return "Blade Barrage";
+        } else if (slot == SubclassEditorSlot::melee) {
+            if (entry == 11) return "Proximity Explosive Knife";
+            if (entry == 15) return "Weighted Knife";
+            if (entry == 21) return "Knife Trick";
+        }
+    } else if (subclass_name_is(subclassName, "Arcstrider")) {
+        if (const char* shared = hunter_shared()) return shared;
+        if (slot == SubclassEditorSlot::grenade) {
+            if (entry == 7) return "Arcbolt Grenade";
+            if (entry == 8) return "Skip Grenade";
+            if (entry == 9) return "Flux Grenade";
+        } else if (slot == SubclassEditorSlot::super) {
+            if (entry == 10) return "Arc Staff";
+        } else if (slot == SubclassEditorSlot::melee) {
+            if (entry == 11) return "Combination Blow";
+            if (entry == 15) return "Disorienting Blow";
+            if (entry == 21) return "Tempest Strike";
+        }
+    } else if (subclass_name_is(subclassName, "Nightstalker")) {
+        if (const char* shared = hunter_shared()) return shared;
+        if (slot == SubclassEditorSlot::grenade) {
+            if (entry == 7) return "Voidwall Grenade";
+            if (entry == 8) return "Vortex Grenade";
+            if (entry == 9) return "Spike Grenade";
+        } else if (slot == SubclassEditorSlot::super) {
+            if (entry == 10) return "Shadowshot";
+            if (entry == 20) return "Spectral Blades";
+        } else if (slot == SubclassEditorSlot::melee) {
+            if (entry == 11) return "Snare Bomb";
+            if (entry == 15) return "Vanish in Smoke";
+            if (entry == 21) return "Corrosive Smoke";
+        }
+    } else if (subclass_name_is(subclassName, "Striker")) {
+        if (const char* shared = titan_shared()) return shared;
+        if (slot == SubclassEditorSlot::grenade) {
+            if (entry == 7) return "Lightning Grenade";
+            if (entry == 8) return "Flashbang Grenade";
+            if (entry == 9) return "Pulse Grenade";
+        } else if (slot == SubclassEditorSlot::super) {
+            if (entry == 10) return "Fists of Havoc";
+            if (entry == 20) return "Thundercrash";
+        } else if (slot == SubclassEditorSlot::melee) {
+            if (entry == 11) return "Seismic Strike";
+            if (entry == 15) return "Frontal Assault";
+            if (entry == 21) return "Ballistic Slam";
+        }
+    } else if (subclass_name_is(subclassName, "Sentinel")) {
+        if (const char* shared = titan_shared()) return shared;
+        if (slot == SubclassEditorSlot::grenade) {
+            if (entry == 7) return "Suppressor Grenade";
+            if (entry == 8) return "Magnetic Grenade";
+            if (entry == 9) return "Voidwall Grenade";
+        } else if (slot == SubclassEditorSlot::super) {
+            if (entry == 10) return "Sentinel Shield / Ward of Dawn";
+        } else if (slot == SubclassEditorSlot::melee) {
+            if (entry == 11) return "Defensive Strike";
+            if (entry == 15) return "Shield Bash";
+            if (entry == 21) return "Tactical Strike";
+        }
+    } else if (subclass_name_is(subclassName, "Sunbreaker")) {
+        if (const char* shared = titan_shared()) return shared;
+        if (slot == SubclassEditorSlot::grenade) {
+            if (entry == 7) return "Fusion Grenade";
+            if (entry == 8) return "Incendiary Grenade";
+            if (entry == 9) return "Thermite Grenade";
+        } else if (slot == SubclassEditorSlot::super) {
+            if (entry == 10) return "Hammer of Sol";
+            if (entry == 20) return "Burning Maul";
+        } else if (slot == SubclassEditorSlot::melee) {
+            if (entry == 11) return "Hammer Strike";
+            if (entry == 15) return "Mortar Blast";
+            if (entry == 21) return "Throwing Hammer";
+        }
+    } else if (subclass_name_is(subclassName, "Voidwalker")) {
+        if (slot == SubclassEditorSlot::movement) {
+            if (entry == 4) return "Strafe Glide";
+            if (entry == 5) return "Blink";
+            if (entry == 6) return "Burst Glide";
+        }
+        if (const char* shared = warlock_shared()) return shared;
+        if (slot == SubclassEditorSlot::grenade) {
+            if (entry == 7) return "Scatter Grenade";
+            if (entry == 8) return "Vortex Grenade";
+            if (entry == 9) return "Axion Bolt";
+        } else if (slot == SubclassEditorSlot::super) {
+            if (entry == 10) return "Nova Bomb";
+            if (entry == 20) return "Nova Warp";
+        } else if (slot == SubclassEditorSlot::melee) {
+            if (entry == 11) return "Entropic Pull";
+            if (entry == 15) return "Devour";
+            if (entry == 21) return "Atomic Breach";
+        }
+    } else if (subclass_name_is(subclassName, "Stormcaller")) {
+        if (const char* shared = warlock_shared()) return shared;
+        if (slot == SubclassEditorSlot::grenade) {
+            if (entry == 7) return "Storm Grenade";
+            if (entry == 8) return "Arcbolt Grenade";
+            if (entry == 9) return "Pulse Grenade";
+        } else if (slot == SubclassEditorSlot::super) {
+            if (entry == 10) return "Stormtrance";
+            if (entry == 20) return "Chaos Reach";
+        } else if (slot == SubclassEditorSlot::melee) {
+            if (entry == 11) return "Chain Lightning";
+            if (entry == 15) return "Rising Storm";
+            if (entry == 21) return "Ball Lightning";
+        }
+    } else if (subclass_name_is(subclassName, "Dawnblade")) {
+        if (const char* shared = warlock_shared()) return shared;
+        if (slot == SubclassEditorSlot::grenade) {
+            if (entry == 7) return "Fusion Grenade";
+            if (entry == 8) return "Solar Grenade";
+            if (entry == 9) return "Firebolt Grenade";
+        } else if (slot == SubclassEditorSlot::super) {
+            if (entry == 10) return "Daybreak";
+            if (entry == 20) return "Well of Radiance";
+        } else if (slot == SubclassEditorSlot::melee) {
+            if (entry == 11) return "Celestial Fire";
+            if (entry == 15) return "Igniting Touch";
+            if (entry == 21) return "Guiding Flame";
+        }
+    }
+    return nullptr;
+}
+
+
+
+[[nodiscard]] bool ascii_icontains(std::string_view text, std::string_view needle) noexcept {
+    if (needle.empty() || text.size() < needle.size()) return false;
+    const auto lower = [](char value) noexcept -> char {
+        return value >= 'A' && value <= 'Z' ? static_cast<char>(value - 'A' + 'a') : value;
+    };
+    for (std::size_t start = 0; start + needle.size() <= text.size(); ++start) {
+        bool match = true;
+        for (std::size_t index = 0; index < needle.size(); ++index) {
+            if (lower(text[start + index]) != lower(needle[index])) {
+                match = false;
+                break;
+            }
+        }
+        if (match) return true;
+    }
+    return false;
+}
+
+/**
+ * Converts an extracted package/hash name into one of the actual Shadowkeep ability names.
+ * This deliberately does NOT use socket-entry ordinals: those ordinals vary between subclass
+ * definitions and were the source of the old Scatter/Axion and Solar/Firebolt mislabels.
+ */
+[[nodiscard]] const char* canonical_subclass_ability_name(std::string_view subclassName,
+                                                           SubclassEditorSlot slot,
+                                                           std::string_view discovered) noexcept {
+    if (discovered.empty()) return nullptr;
+    const auto match = [&](const char* name) noexcept -> const char* {
+        return ascii_icontains(discovered, name) ? name : nullptr;
+    };
+
+    if (slot == SubclassEditorSlot::movement) {
+        if (subclass_name_is(subclassName, "Gunslinger")
+            || subclass_name_is(subclassName, "Arcstrider")
+            || subclass_name_is(subclassName, "Nightstalker")) {
+            if (const char* v = match("High Jump")) return v;
+            if (const char* v = match("Strafe Jump")) return v;
+            if (const char* v = match("Triple Jump")) return v;
+        } else if (subclass_name_is(subclassName, "Striker")
+                   || subclass_name_is(subclassName, "Sentinel")
+                   || subclass_name_is(subclassName, "Sunbreaker")) {
+            if (const char* v = match("High Lift")) return v;
+            if (const char* v = match("Strafe Lift")) return v;
+            if (const char* v = match("Catapult Lift")) return v;
+        } else {
+            if (const char* v = match("Strafe Glide")) return v;
+            if (const char* v = match("Burst Glide")) return v;
+            if (const char* v = match("Balanced Glide")) return v;
+            if (const char* v = match("Blink")) return v;
+        }
+        return nullptr;
+    }
+
+    if (slot == SubclassEditorSlot::classAbility) {
+        if (subclass_name_is(subclassName, "Gunslinger")
+            || subclass_name_is(subclassName, "Arcstrider")
+            || subclass_name_is(subclassName, "Nightstalker")) {
+            if (const char* v = match("Marksman's Dodge")) return v;
+            if (const char* v = match("Gambler's Dodge")) return v;
+        } else if (subclass_name_is(subclassName, "Striker")
+                   || subclass_name_is(subclassName, "Sentinel")
+                   || subclass_name_is(subclassName, "Sunbreaker")) {
+            if (const char* v = match("Towering Barricade")) return v;
+            if (const char* v = match("Rally Barricade")) return v;
+        } else {
+            if (const char* v = match("Healing Rift")) return v;
+            if (const char* v = match("Empowering Rift")) return v;
+        }
+        return nullptr;
+    }
+
+#define MATCH_ABILITY(name) do { if (const char* v = match(name)) return v; } while (false)
+    if (subclass_name_is(subclassName, "Gunslinger")) {
+        if (slot == SubclassEditorSlot::grenade) {
+            MATCH_ABILITY("Incendiary Grenade"); MATCH_ABILITY("Swarm Grenade"); MATCH_ABILITY("Tripmine Grenade");
+        } else if (slot == SubclassEditorSlot::super) {
+            MATCH_ABILITY("Blade Barrage"); MATCH_ABILITY("Golden Gun");
+        } else if (slot == SubclassEditorSlot::melee) {
+            MATCH_ABILITY("Proximity Explosive Knife"); MATCH_ABILITY("Weighted Knife"); MATCH_ABILITY("Knife Trick");
+        }
+    } else if (subclass_name_is(subclassName, "Arcstrider")) {
+        if (slot == SubclassEditorSlot::grenade) {
+            MATCH_ABILITY("Skip Grenade"); MATCH_ABILITY("Flux Grenade"); MATCH_ABILITY("Arcbolt Grenade");
+        } else if (slot == SubclassEditorSlot::super) {
+            MATCH_ABILITY("Arc Staff"); MATCH_ABILITY("Whirlwind Guard");
+        } else if (slot == SubclassEditorSlot::melee) {
+            MATCH_ABILITY("Combination Blow"); MATCH_ABILITY("Disorienting Blow"); MATCH_ABILITY("Tempest Strike");
+        }
+    } else if (subclass_name_is(subclassName, "Nightstalker")) {
+        if (slot == SubclassEditorSlot::grenade) {
+            MATCH_ABILITY("Vortex Grenade"); MATCH_ABILITY("Spike Grenade"); MATCH_ABILITY("Voidwall Grenade");
+        } else if (slot == SubclassEditorSlot::super) {
+            MATCH_ABILITY("Spectral Blades"); MATCH_ABILITY("Shadowshot");
+        } else if (slot == SubclassEditorSlot::melee) {
+            MATCH_ABILITY("Snare Bomb"); MATCH_ABILITY("Vanish in Smoke"); MATCH_ABILITY("Corrosive Smoke");
+        }
+    } else if (subclass_name_is(subclassName, "Striker")) {
+        if (slot == SubclassEditorSlot::grenade) {
+            MATCH_ABILITY("Flashbang Grenade"); MATCH_ABILITY("Pulse Grenade"); MATCH_ABILITY("Lightning Grenade");
+        } else if (slot == SubclassEditorSlot::super) {
+            MATCH_ABILITY("Thundercrash"); MATCH_ABILITY("Fists of Havoc");
+        } else if (slot == SubclassEditorSlot::melee) {
+            MATCH_ABILITY("Seismic Strike"); MATCH_ABILITY("Frontal Assault"); MATCH_ABILITY("Ballistic Slam");
+        }
+    } else if (subclass_name_is(subclassName, "Sentinel")) {
+        if (slot == SubclassEditorSlot::grenade) {
+            MATCH_ABILITY("Magnetic Grenade"); MATCH_ABILITY("Voidwall Grenade"); MATCH_ABILITY("Suppressor Grenade");
+        } else if (slot == SubclassEditorSlot::super) {
+            MATCH_ABILITY("Ward of Dawn"); MATCH_ABILITY("Sentinel Shield");
+        } else if (slot == SubclassEditorSlot::melee) {
+            MATCH_ABILITY("Defensive Strike"); MATCH_ABILITY("Shield Bash"); MATCH_ABILITY("Tactical Strike");
+        }
+    } else if (subclass_name_is(subclassName, "Sunbreaker")) {
+        if (slot == SubclassEditorSlot::grenade) {
+            MATCH_ABILITY("Incendiary Grenade"); MATCH_ABILITY("Thermite Grenade"); MATCH_ABILITY("Fusion Grenade");
+        } else if (slot == SubclassEditorSlot::super) {
+            MATCH_ABILITY("Burning Maul"); MATCH_ABILITY("Hammer of Sol");
+        } else if (slot == SubclassEditorSlot::melee) {
+            MATCH_ABILITY("Hammer Strike"); MATCH_ABILITY("Mortar Blast"); MATCH_ABILITY("Throwing Hammer");
+        }
+    } else if (subclass_name_is(subclassName, "Voidwalker")) {
+        if (slot == SubclassEditorSlot::grenade) {
+            MATCH_ABILITY("Vortex Grenade"); MATCH_ABILITY("Axion Bolt"); MATCH_ABILITY("Scatter Grenade");
+        } else if (slot == SubclassEditorSlot::super) {
+            MATCH_ABILITY("Nova Warp"); MATCH_ABILITY("Nova Bomb");
+        } else if (slot == SubclassEditorSlot::melee) {
+            MATCH_ABILITY("Entropic Pull"); MATCH_ABILITY("Devour"); MATCH_ABILITY("Atomic Breach");
+        }
+    } else if (subclass_name_is(subclassName, "Stormcaller")) {
+        if (slot == SubclassEditorSlot::grenade) {
+            MATCH_ABILITY("Arcbolt Grenade"); MATCH_ABILITY("Pulse Grenade"); MATCH_ABILITY("Storm Grenade");
+        } else if (slot == SubclassEditorSlot::super) {
+            MATCH_ABILITY("Chaos Reach"); MATCH_ABILITY("Stormtrance");
+        } else if (slot == SubclassEditorSlot::melee) {
+            MATCH_ABILITY("Chain Lightning"); MATCH_ABILITY("Rising Storm"); MATCH_ABILITY("Ball Lightning");
+        }
+    } else if (subclass_name_is(subclassName, "Dawnblade")) {
+        if (slot == SubclassEditorSlot::grenade) {
+            MATCH_ABILITY("Solar Grenade"); MATCH_ABILITY("Firebolt Grenade"); MATCH_ABILITY("Fusion Grenade");
+        } else if (slot == SubclassEditorSlot::super) {
+            MATCH_ABILITY("Well of Radiance"); MATCH_ABILITY("Daybreak");
+        } else if (slot == SubclassEditorSlot::melee) {
+            MATCH_ABILITY("Swift Strike"); MATCH_ABILITY("Igniting Touch"); MATCH_ABILITY("Guiding Flame");
+        }
+    }
+#undef MATCH_ABILITY
+    return nullptr;
+}
+
+[[nodiscard]] bool bucket_holds_hash(const state::build_data::abilities::Bucket& bucket,
+                                     std::uint32_t hash) noexcept {
+    if (hash == 0) return false;
+    for (std::size_t index = 0; index < bucket.hashCount; ++index) {
+        if (bucket.hashes[index] == hash) return true;
+    }
+    return false;
+}
+
+[[nodiscard]] const char* subclass_path_name(std::string_view subclassName, std::size_t path) noexcept {
+    static constexpr const char* gunslinger[] = {"Way of the Outlaw", "Way of the Sharpshooter", "Way of a Thousand Cuts"};
+    static constexpr const char* arcstrider[] = {"Way of the Warrior", "Way of the Wind", "Way of the Current"};
+    static constexpr const char* nightstalker[] = {"Way of the Trapper", "Way of the Pathfinder", "Way of the Wraith"};
+    static constexpr const char* striker[] = {"Code of the Earthshaker", "Code of the Juggernaut", "Code of the Missile"};
+    static constexpr const char* sentinel[] = {"Code of the Protector", "Code of the Aggressor", "Code of the Commander"};
+    static constexpr const char* sunbreaker[] = {"Code of the Fire-Forged", "Code of the Siegebreaker", "Code of the Devastator"};
+    static constexpr const char* voidwalker[] = {"Attunement of Chaos", "Attunement of Hunger", "Attunement of Fission"};
+    static constexpr const char* stormcaller[] = {"Attunement of Conduction", "Attunement of the Elements", "Attunement of Control"};
+    static constexpr const char* dawnblade[] = {"Attunement of Sky", "Attunement of Flame", "Attunement of Grace"};
+    if (path >= 3) return nullptr;
+    if (subclass_name_is(subclassName, "Gunslinger")) return gunslinger[path];
+    if (subclass_name_is(subclassName, "Arcstrider")) return arcstrider[path];
+    if (subclass_name_is(subclassName, "Nightstalker")) return nightstalker[path];
+    if (subclass_name_is(subclassName, "Striker")) return striker[path];
+    if (subclass_name_is(subclassName, "Sentinel")) return sentinel[path];
+    if (subclass_name_is(subclassName, "Sunbreaker")) return sunbreaker[path];
+    if (subclass_name_is(subclassName, "Voidwalker")) return voidwalker[path];
+    if (subclass_name_is(subclassName, "Stormcaller")) return stormcaller[path];
+    if (subclass_name_is(subclassName, "Dawnblade")) return dawnblade[path];
+    return nullptr;
+}
+
+[[nodiscard]] const char* path_super_name(std::string_view subclassName, std::size_t path) noexcept {
+    if (subclass_name_is(subclassName, "Gunslinger")) {
+        static constexpr const char* v[] = {"Golden Gun (Six-Shooter)", "Golden Gun (3-Shot Precision)", "Blade Barrage"}; return path < 3 ? v[path] : nullptr;
+    }
+    if (subclass_name_is(subclassName, "Arcstrider")) { static constexpr const char* v[] = {"Arc Staff", "Arc Staff", "Whirlwind Guard"}; return path < 3 ? v[path] : nullptr; }
+    if (subclass_name_is(subclassName, "Nightstalker")) { static constexpr const char* v[] = {"Shadowshot: Deadfall", "Shadowshot: Moebius Quiver", "Spectral Blades"}; return path < 3 ? v[path] : nullptr; }
+    if (subclass_name_is(subclassName, "Striker")) { static constexpr const char* v[] = {"Fists of Havoc", "Fists of Havoc", "Thundercrash"}; return path < 3 ? v[path] : nullptr; }
+    if (subclass_name_is(subclassName, "Sentinel")) { static constexpr const char* v[] = {"Sentinel Shield / Ward of Dawn", "Sentinel Shield", "Sentinel Shield"}; return path < 3 ? v[path] : nullptr; }
+    if (subclass_name_is(subclassName, "Sunbreaker")) { static constexpr const char* v[] = {"Hammer of Sol", "Hammer of Sol", "Burning Maul"}; return path < 3 ? v[path] : nullptr; }
+    if (subclass_name_is(subclassName, "Voidwalker")) { static constexpr const char* v[] = {"Nova Bomb: Cataclysm", "Nova Bomb: Vortex", "Nova Warp"}; return path < 3 ? v[path] : nullptr; }
+    if (subclass_name_is(subclassName, "Stormcaller")) { static constexpr const char* v[] = {"Stormtrance", "Stormtrance", "Chaos Reach"}; return path < 3 ? v[path] : nullptr; }
+    if (subclass_name_is(subclassName, "Dawnblade")) { static constexpr const char* v[] = {"Daybreak", "Daybreak", "Well of Radiance"}; return path < 3 ? v[path] : nullptr; }
+    return nullptr;
+}
+
+[[nodiscard]] state::runtime::subclass_ability_override::Slot
+runtime_override_slot(SubclassEditorSlot slot) noexcept {
+    using Slot = state::runtime::subclass_ability_override::Slot;
+    switch (slot) {
+    case SubclassEditorSlot::movement: return Slot::movement;
+    case SubclassEditorSlot::grenade: return Slot::grenade;
+    case SubclassEditorSlot::super: return Slot::super;
+    case SubclassEditorSlot::melee: return Slot::melee;
+    case SubclassEditorSlot::classAbility: return Slot::classAbility;
+    }
+    return Slot::movement;
+}
+
+[[nodiscard]] std::uint8_t subclass_editor_default_entry(SubclassEditorSlot slot) noexcept {
+    switch (slot) {
+    case SubclassEditorSlot::movement: return state::kDefaultMovementAbilityEntry;
+    case SubclassEditorSlot::grenade: return state::kDefaultGrenadeAbilityEntry;
+    case SubclassEditorSlot::super: return state::kDefaultSuperAbilityEntry;
+    case SubclassEditorSlot::melee: return state::kDefaultMeleeAbilityEntry;
+    case SubclassEditorSlot::classAbility: return state::kDefaultClassAbilityEntry;
+    }
+    return 0;
+}
+
+void subclass_editor_set_selection_entry(state::build_data::abilities::Selection& selection,
+                                         SubclassEditorSlot slot,
+                                         std::uint8_t entry) noexcept {
+    switch (slot) {
+    case SubclassEditorSlot::movement: selection.movementEntry = entry; break;
+    case SubclassEditorSlot::grenade: selection.grenadeEntry = entry; break;
+    case SubclassEditorSlot::super: selection.superEntry = entry; break;
+    case SubclassEditorSlot::melee: selection.meleeEntry = entry; break;
+    case SubclassEditorSlot::classAbility: selection.classEntry = entry; break;
+    }
+}
+
+[[nodiscard]] state::build_data::abilities::Selection
+subclass_editor_default_selection() noexcept {
+    return {state::kDefaultMovementAbilityEntry,
+            state::kDefaultGrenadeAbilityEntry,
+            state::kDefaultSuperAbilityEntry,
+            state::kDefaultMeleeAbilityEntry,
+            state::kDefaultClassAbilityEntry};
+}
+
+void collect_subclass_editor_sources(const state::AccountState& account,
+                                     std::vector<SubclassEditorSource>& sources) {
+    sources.clear();
+    constexpr std::size_t kSubclassSlot =
+        static_cast<std::size_t>(inventory::EquipmentSlot::subclass);
+    for (std::size_t characterIndex = 0; characterIndex < account.characterCount; ++characterIndex) {
+        const auto& equipped = account.characters[characterIndex].equipment.slots[kSubclassSlot];
+        state::build_data::items::Definition equippedDefinition{};
+        if (!equipped.has_value()
+            || !state::build_data::find_item_definition_hash(equipped->definitionHash,
+                                                             equippedDefinition)) {
+            continue;
+        }
+        std::array<std::uint16_t, state::build_data::kSubclassGroupSize> group{};
+        if (!state::build_data::find_subclass_group(equippedDefinition.definitionIndex, group)) {
+            group[0] = equippedDefinition.definitionIndex;
+            group[1] = equippedDefinition.definitionIndex;
+            group[2] = equippedDefinition.definitionIndex;
+        }
+        for (const std::uint16_t definitionIndex : group) {
+            state::build_data::items::Definition definition{};
+            item_details::Definition detail{};
+            if (!state::build_data::find_item_definition_index(definitionIndex, definition)
+                || !state::build_data::find_configured_item_detail(definitionIndex, detail)) {
+                continue;
+            }
+            const bool duplicate = std::any_of(
+                sources.begin(), sources.end(), [&](const SubclassEditorSource& source) {
+                    return source.socketEntryListIndex == detail.socketEntryListIndex;
+                });
+            if (duplicate) {
+                continue;
+            }
+            const std::string_view nativeName = display_name(definition.definitionHash);
+            std::string name{};
+            if (!nativeName.empty()) {
+                name.assign(nativeName.data(), nativeName.size());
+            } else {
+                std::array<char, 32> fallback{};
+                (void)std::snprintf(fallback.data(),
+                                    fallback.size(),
+                                    "Subclass 0x%08X",
+                                    definition.definitionHash);
+                name = fallback.data();
+            }
+            sources.push_back(SubclassEditorSource{definition.definitionHash,
+                                                   definition.definitionIndex,
+                                                   detail.socketEntryListIndex,
+                                                   account.characters[characterIndex].characterClass,
+                                                   name});
+        }
+    }
+}
+
+[[nodiscard]] bool subclass_path_anchor_for_entry(
+    const state::build_data::socket_entry_lists::EntryTable& entries,
+    std::uint8_t entry,
+    std::uint8_t& anchor,
+    std::size_t* pathOrdinal = nullptr) noexcept {
+    if (entry >= entries.entries.size()) return false;
+    const std::uint8_t group = entries.entries[entry].group;
+    if (group == state::build_data::socket_entry_lists::kNoEntryGroup) {
+        anchor = entry;
+        if (pathOrdinal != nullptr) *pathOrdinal = 0;
+        return false;
+    }
+    std::array<std::uint8_t, state::build_data::socket_entry_lists::kEntryCapacity> members{};
+    std::size_t count = 0;
+    std::size_t ordinal = 0;
+    for (std::size_t i = 0; i < entries.entries.size(); ++i) {
+        if (entries.entries[i].group != group) continue;
+        if (count < members.size()) members[count] = static_cast<std::uint8_t>(i);
+        if (i == entry) ordinal = count;
+        ++count;
+    }
+    if (count <= state::kMaxAttunementBundleSize || count == 0) {
+        anchor = entry;
+        if (pathOrdinal != nullptr) *pathOrdinal = 0;
+        return false;
+    }
+    const std::size_t path = ordinal / state::kMaxAttunementBundleSize;
+    anchor = members[(std::min)(path * state::kMaxAttunementBundleSize, count - 1)];
+    if (pathOrdinal != nullptr) *pathOrdinal = path;
+    return true;
+}
+
+[[nodiscard]] bool subclass_editor_selection_for_entry(
+    const SubclassEditorSource& source,
+    const state::build_data::socket_entry_lists::EntryTable& entries,
+    std::uint8_t requestedEntry,
+    state::build_data::abilities::Selection& selection,
+    std::size_t* pathOrdinal = nullptr) noexcept {
+    std::uint8_t anchor = requestedEntry;
+    (void)subclass_path_anchor_for_entry(entries, requestedEntry, anchor, pathOrdinal);
+    std::uint8_t anchorBucket = state::build_data::socket_entry_buckets::kNoDestinationBucket;
+    if (!state::build_data::find_socket_entry_bucket(source.socketEntryListIndex, anchor, anchorBucket)) {
+        return false;
+    }
+    selection = subclass_editor_default_selection();
+    const std::array<std::pair<SubclassEditorSlot, std::uint8_t>, 5> defaults{{
+        {SubclassEditorSlot::movement, state::kDefaultMovementAbilityEntry},
+        {SubclassEditorSlot::grenade, state::kDefaultGrenadeAbilityEntry},
+        {SubclassEditorSlot::super, state::kDefaultSuperAbilityEntry},
+        {SubclassEditorSlot::melee, state::kDefaultMeleeAbilityEntry},
+        {SubclassEditorSlot::classAbility, state::kDefaultClassAbilityEntry},
+    }};
+    for (const auto& route : defaults) {
+        std::uint8_t bucket = state::build_data::socket_entry_buckets::kNoDestinationBucket;
+        if (state::build_data::find_socket_entry_bucket(source.socketEntryListIndex, route.second, bucket)
+            && bucket == anchorBucket) {
+            subclass_editor_set_selection_entry(selection, route.first, anchor);
+            return true;
+        }
+    }
+    return false;
+}
+
+[[nodiscard]] std::size_t subclass_path_members(
+    const state::build_data::socket_entry_lists::EntryTable& entries,
+    std::array<std::array<std::uint8_t, state::kMaxAttunementBundleSize>, 3>& paths,
+    std::array<std::size_t, 3>& pathSizes) noexcept {
+    paths = {};
+    pathSizes = {};
+    std::array<std::uint8_t, 256> populations{};
+    for (const auto& entry : entries.entries) {
+        if (entry.group != state::build_data::socket_entry_lists::kNoEntryGroup) {
+            ++populations[entry.group];
+        }
+    }
+    std::uint8_t pathGroup = state::build_data::socket_entry_lists::kNoEntryGroup;
+    for (std::size_t group = 0; group < populations.size(); ++group) {
+        if (populations[group] > state::kMaxAttunementBundleSize) {
+            pathGroup = static_cast<std::uint8_t>(group);
+            break;
+        }
+    }
+    if (pathGroup == state::build_data::socket_entry_lists::kNoEntryGroup) return 0;
+
+    std::array<std::uint8_t, state::build_data::socket_entry_lists::kEntryCapacity> members{};
+    std::size_t memberCount = 0;
+    for (std::size_t i = 0; i < entries.entries.size(); ++i) {
+        if (entries.entries[i].group == pathGroup && memberCount < members.size()) {
+            members[memberCount++] = static_cast<std::uint8_t>(i);
+        }
+    }
+    const std::size_t pathCount = (std::min)(std::size_t{3},
+        (memberCount + state::kMaxAttunementBundleSize - 1) / state::kMaxAttunementBundleSize);
+    for (std::size_t path = 0; path < pathCount; ++path) {
+        const std::size_t begin = path * state::kMaxAttunementBundleSize;
+        const std::size_t end = (std::min)(memberCount, begin + state::kMaxAttunementBundleSize);
+        for (std::size_t i = begin; i < end; ++i) {
+            paths[path][pathSizes[path]++] = members[i];
+        }
+    }
+    return pathCount;
+}
+
+[[nodiscard]] std::size_t subclass_path_selections(
+    const SubclassEditorSource& source,
+    const state::build_data::socket_entry_lists::EntryTable& entries,
+    std::array<state::build_data::abilities::Selection, 3>& selections) noexcept {
+    selections = {};
+    std::array<std::array<std::uint8_t, state::kMaxAttunementBundleSize>, 3> paths{};
+    std::array<std::size_t, 3> pathSizes{};
+    const std::size_t pathCount = subclass_path_members(entries, paths, pathSizes);
+    if (pathCount == 0) return 0;
+
+    struct DefaultRoute { SubclassEditorSlot slot; std::uint8_t entry; std::uint8_t bucket; };
+    std::array<DefaultRoute, 5> routes{{
+        {SubclassEditorSlot::movement, state::kDefaultMovementAbilityEntry, state::build_data::socket_entry_buckets::kNoDestinationBucket},
+        {SubclassEditorSlot::grenade, state::kDefaultGrenadeAbilityEntry, state::build_data::socket_entry_buckets::kNoDestinationBucket},
+        {SubclassEditorSlot::super, state::kDefaultSuperAbilityEntry, state::build_data::socket_entry_buckets::kNoDestinationBucket},
+        {SubclassEditorSlot::melee, state::kDefaultMeleeAbilityEntry, state::build_data::socket_entry_buckets::kNoDestinationBucket},
+        {SubclassEditorSlot::classAbility, state::kDefaultClassAbilityEntry, state::build_data::socket_entry_buckets::kNoDestinationBucket},
+    }};
+    for (auto& route : routes) {
+        (void)state::build_data::find_socket_entry_bucket(source.socketEntryListIndex,
+                                                           route.entry,
+                                                           route.bucket);
+    }
+
+    std::size_t built = 0;
+    for (std::size_t path = 0; path < pathCount; ++path) {
+        state::build_data::abilities::Selection selection = subclass_editor_default_selection();
+        bool selectable = false;
+        // A native Way / Code / Attunement is a bundle, not a single selector. Route every
+        // member that belongs to one of the five canonical semantic lanes. Stopping after the
+        // first member leaves middle/bottom trees only partially described and can publish empty
+        // Super/Melee data for paths whose first member is a passive node.
+        for (std::size_t member = 0; member < pathSizes[path]; ++member) {
+            const std::uint8_t entry = paths[path][member];
+            std::uint8_t bucket = state::build_data::socket_entry_buckets::kNoDestinationBucket;
+            if (!state::build_data::find_socket_entry_bucket(source.socketEntryListIndex, entry, bucket)) continue;
+            for (const auto& route : routes) {
+                if (route.bucket != state::build_data::socket_entry_buckets::kNoDestinationBucket
+                    && route.bucket == bucket) {
+                    subclass_editor_set_selection_entry(selection, route.slot, entry);
+                    selectable = true;
+                    break;
+                }
+            }
+        }
+        if (selectable) selections[built++] = selection;
+    }
+    return built;
+}
+
+struct SecondaryPerkChoice {
+    std::uint32_t hash{};
+    std::uint16_t sourceSocketEntryListIndex{};
+    state::build_data::abilities::Selection sourceSelection{};
+    std::uint8_t sourceEntry{};
+    std::uint8_t sourceBucket{};
+    state::CharacterClass characterClass{state::CharacterClass::titan};
+    std::string sourceName{};
+    std::string pathName{};
+    std::string label{};
+};
+
+[[nodiscard]] const char* known_secondary_perk_name(std::string_view subclassName,
+                                                       std::uint8_t entry) noexcept {
+    // Exact Shadowkeep tree-node names mirrored from SunriseAPI v79. This intentionally keys by
+    // the authored entry rather than by display hashes, because one published node can carry
+    // several wrapper/shared hashes.
+#define TREE(subclass, e11,n11,e12,n12,e13,n13,e14,n14,e15,n15,e16,n16,e17,n17,e18,n18,e20,n20,e21,n21,e22,n22,e23,n23) \
+    if (subclass_name_is(subclassName, subclass)) { \
+        switch (entry) { \
+        case e11: return n11; case e12: return n12; case e13: return n13; case e14: return n14; \
+        case e15: return n15; case e16: return n16; case e17: return n17; case e18: return n18; \
+        case e20: return n20; case e21: return n21; case e22: return n22; case e23: return n23; \
+        default: return nullptr; } \
+    }
+    TREE("Gunslinger", 11,"Proximity Explosive Knife",12,"Chains of Woe",13,"Deadshot",14,"Six-Shooter",
+         15,"Weighted Knife",16,"Practice Makes Perfect",17,"Knock 'Em Down",18,"Line 'Em Up",
+         20,"Blade Barrage",21,"Knife Trick",22,"Playing with Fire",23,"The Burning Edge")
+    TREE("Arcstrider", 11,"Combination Blow",12,"Combat Flow",13,"Deadly Reach",14,"Lethal Current",
+         15,"Disorienting Blow",16,"Focused Breathing",17,"Combat Meditation",18,"Lightning Reflexes",
+         20,"Whirlwind Guard",21,"Tempest Strike",22,"Lightning Weave",23,"Ebb and Flow")
+    TREE("Nightstalker", 11,"Snare Bomb",12,"Keen Scout",13,"Deadfall",14,"Vanishing Step",
+         15,"Vanish in Smoke",16,"Lockdown",17,"Combat Provision",18,"Moebius Quiver",
+         20,"Spectral Blades",21,"Corrosive Smoke",22,"Flawless Execution",23,"Shattering Strike")
+    TREE("Striker", 11,"Seismic Strike",12,"Aftershocks",13,"Magnitude",14,"Terminal Velocity",
+         15,"Frontal Assault",16,"Reversal",17,"Knockout",18,"Trample",
+         20,"Thundercrash",21,"Ballistic Slam",22,"Impact Conversion",23,"Inertia Override")
+    TREE("Sentinel", 11,"Defensive Strike",12,"Rallying Force",13,"Turn the Tide",14,"Ward of Dawn",
+         15,"Shield Bash",16,"Superior Arsenal",17,"In the Trenches",18,"Second Shield",
+         20,"Banner Shield",21,"Tactical Strike",22,"Controlled Demolition",23,"Resupply")
+    TREE("Sunbreaker", 11,"Hammer Strike",12,"Tempered Metal",13,"Explosive Pyre",14,"Vulcan's Rage",
+         15,"Mortar Blast",16,"Sol Invictus",17,"Sun Warrior",18,"Endless Siege",
+         20,"Burning Maul",21,"Throwing Hammer",22,"Tireless Warrior",23,"Roaring Flames")
+    TREE("Stormcaller", 11,"Chain Lightning",12,"Transcendence",13,"Arc Web",14,"Ionic Blink",
+         15,"Rising Storm",16,"Landfall",17,"Electrostatic Surge",18,"Arc Soul",
+         20,"Chaos Reach",21,"Ball Lightning",22,"Ionic Trace",23,"Pulsewave")
+    TREE("Dawnblade", 11,"Celestial Fire",12,"Winged Sun",13,"Heat Rises",14,"Icarus Dash",
+         15,"Igniting Touch",16,"Fated for the Flame",17,"Everlasting Fire",18,"Phoenix Dive",
+         20,"Well of Radiance",21,"Guiding Flame",22,"Divine Protection",23,"Benevolent Dawn")
+    TREE("Voidwalker", 11,"Entropic Pull",12,"Chaos Accelerant",13,"Bloom",14,"Cataclysm",
+         15,"Devour",16,"Feed the Void",17,"Insatiable",18,"Vortex",
+         20,"Nova Warp",21,"Atomic Breach",22,"Handheld Supernova",23,"Dark Matter")
+#undef TREE
+    return nullptr;
+}
+
+void build_secondary_perk_choices(const std::vector<SubclassEditorSource>& sources,
+                                  std::vector<SecondaryPerkChoice>& choices) {
+    choices.clear();
+    for (const SubclassEditorSource& source : sources) {
+        state::build_data::socket_entry_lists::EntryTable entries{};
+        if (!state::build_data::find_socket_entry_table(source.socketEntryListIndex, entries)) continue;
+        std::array<state::build_data::abilities::Selection, 3> pathSelections{};
+        const std::size_t pathCount = subclass_path_selections(source, entries, pathSelections);
+        std::array<std::array<std::uint8_t, state::kMaxAttunementBundleSize>, 3> paths{};
+        std::array<std::size_t, 3> pathSizes{};
+        if (pathCount == 0 || subclass_path_members(entries, paths, pathSizes) == 0) continue;
+
+        for (std::size_t path = 0; path < pathCount; ++path) {
+            state::build_data::abilities::Definition published{};
+            if (!state::build_data::find_ability_buckets(source.socketEntryListIndex,
+                                                         pathSelections[path], published)) continue;
+            const char* nativePath = subclass_path_name(source.name, path);
+            for (std::size_t member = 0; member < pathSizes[path]; ++member) {
+                const std::uint8_t entryIndex = paths[path][member];
+                std::uint8_t destination = state::build_data::socket_entry_buckets::kNoDestinationBucket;
+                const bool hasDestination = state::build_data::find_socket_entry_bucket(
+                    source.socketEntryListIndex, entryIndex, destination);
+                // Secondary Perks are the non-melee nodes of the native 4-node tree. Some passive
+                // nodes do not receive a normal ability-bucket destination; keep them anyway so
+                // they can use the overflow publication path below.
+                if (entryIndex == 11 || entryIndex == 15 || entryIndex == 21) continue;
+                if (!hasDestination || destination >= published.buckets.size()) {
+                    destination = state::build_data::socket_entry_buckets::kNoDestinationBucket;
+                }
+                // The plug source is the individual tree node. Prefer it over the rendered bucket's
+                // first hash (which can be the Super itself for modifiers such as Second Shield).
+                std::uint32_t hash = entries.entries[entryIndex].plugSource;
+                if (hash == 0 && destination < published.buckets.size()) {
+                    const auto& bucket = published.buckets[destination];
+                    for (std::size_t i = 0; i < bucket.hashCount; ++i) {
+                        if (bucket.hashes[i] != 0) { hash = bucket.hashes[i]; break; }
+                    }
+                }
+                if (hash == 0) continue;
+                const bool duplicate = std::any_of(choices.begin(), choices.end(),
+                    [&](const SecondaryPerkChoice& value) {
+                        return value.hash == hash
+                            && value.sourceSocketEntryListIndex == source.socketEntryListIndex
+                            && value.sourceEntry == entryIndex;
+                    });
+                if (duplicate) continue;
+
+                const char* canonical = known_secondary_perk_name(source.name, entryIndex);
+                std::string_view discovered = display_name(entries.entries[entryIndex].plugSource);
+                if (discovered.empty()) discovered = display_name(hash);
+                std::array<char, 320> label{};
+                if (canonical != nullptr) {
+                    (void)std::snprintf(label.data(), label.size(), "%s | %s | %s",
+                                        source.name.c_str(), nativePath != nullptr ? nativePath : "Subclass Path",
+                                        canonical);
+                } else if (!discovered.empty()) {
+                    (void)std::snprintf(label.data(), label.size(), "%s | %s | %.*s",
+                                        source.name.c_str(), nativePath != nullptr ? nativePath : "Subclass Path",
+                                        static_cast<int>(discovered.size()), discovered.data());
+                } else {
+                    (void)std::snprintf(label.data(), label.size(), "%s | %s | Subclass Perk",
+                                        source.name.c_str(), nativePath != nullptr ? nativePath : "Subclass Path");
+                }
+                choices.push_back(SecondaryPerkChoice{hash, source.socketEntryListIndex,
+                    pathSelections[path], entryIndex, destination, source.characterClass,
+                    source.name, nativePath != nullptr ? nativePath : "Subclass Path", label.data()});
+            }
+        }
+    }
+}
+
+void build_subclass_editor_choices(const std::vector<SubclassEditorSource>& sources,
+                                   SubclassEditorSlot slot,
+                                   std::vector<SubclassEditorChoice>& choices) {
+    choices.clear();
+    const std::uint8_t defaultEntry = subclass_editor_default_entry(slot);
+
+    struct RawChoice {
+        state::build_data::abilities::Selection selection{};
+        state::build_data::abilities::Bucket bucket{};
+        std::uint8_t entry{};
+        std::uint8_t sourcePath{0xFF};
+    };
+
+    for (const SubclassEditorSource& source : sources) {
+        state::build_data::socket_entry_lists::EntryTable entries{};
+        std::uint8_t semanticBucket =
+            state::build_data::socket_entry_buckets::kNoDestinationBucket;
+        if (!state::build_data::find_socket_entry_table(source.socketEntryListIndex, entries)
+            || !state::build_data::find_socket_entry_bucket(source.socketEntryListIndex,
+                                                             defaultEntry,
+                                                             semanticBucket)) {
+            continue;
+        }
+
+        // Supers are selected as complete native 4-node Ways/Codes/Attunements. Their canonical
+        // path names are authoritative; a single bucket can contain the Super plus path modifiers,
+        // so naming the first published hash is not reliable (and hid Well of Radiance before).
+        if (slot == SubclassEditorSlot::super) {
+            std::array<state::build_data::abilities::Selection, 3> pathSelections{};
+            const std::size_t pathCount = subclass_path_selections(source, entries, pathSelections);
+            if (pathCount != 0) {
+                std::array<RawChoice, 3> raw{};
+                std::size_t rawCount = 0;
+                for (std::size_t path = 0; path < pathCount && path < raw.size(); ++path) {
+                    state::build_data::abilities::Definition published{};
+                    if (!state::build_data::find_ability_buckets(source.socketEntryListIndex,
+                                                                 pathSelections[path], published)
+                        || semanticBucket >= published.buckets.size()) {
+                        continue;
+                    }
+                    const auto& bucket = published.buckets[semanticBucket];
+                    if (bucket.kind == state::build_data::abilities::kEmptyBucketKind) continue;
+                    raw[rawCount++] = RawChoice{pathSelections[path], bucket, defaultEntry,
+                                                static_cast<std::uint8_t>(path)};
+                }
+
+                for (std::size_t index = 0; index < rawCount; ++index) {
+                    const RawChoice& candidate = raw[index];
+                    const std::size_t path = candidate.sourcePath;
+                    const char* pathName = subclass_path_name(source.name, path);
+                    const char* superName = path_super_name(source.name, path);
+                    std::uint32_t representativeHash = 0;
+
+                    // Prefer a hash unique to this path whose extracted name agrees with the
+                    // canonical Super. This is only for display/diagnostics; runtime publication
+                    // still copies the complete native bucket selected by sourceSelection.
+                    for (std::size_t h = 0; h < candidate.bucket.hashCount; ++h) {
+                        const std::uint32_t hash = candidate.bucket.hashes[h];
+                        if (hash == 0) continue;
+                        bool heldElsewhere = false;
+                        for (std::size_t other = 0; other < rawCount; ++other) {
+                            if (other != index && bucket_holds_hash(raw[other].bucket, hash)) {
+                                heldElsewhere = true;
+                                break;
+                            }
+                        }
+                        if (heldElsewhere) continue;
+                        const std::string_view discovered = display_name(hash);
+                        const char* canonical = canonical_subclass_ability_name(
+                            source.name, SubclassEditorSlot::super, discovered);
+                        if (canonical != nullptr
+                            && (superName == nullptr || ascii_icontains(canonical, superName)
+                                || ascii_icontains(superName, canonical))) {
+                            representativeHash = hash;
+                            break;
+                        }
+                    }
+                    if (representativeHash == 0) {
+                        for (std::size_t h = 0; h < candidate.bucket.hashCount; ++h) {
+                            if (candidate.bucket.hashes[h] != 0) {
+                                representativeHash = candidate.bucket.hashes[h];
+                                break;
+                            }
+                        }
+                    }
+
+                    std::array<char, 320> label{};
+                    (void)std::snprintf(label.data(), label.size(), "%s | %s | %s",
+                                        source.name.c_str(),
+                                        pathName != nullptr ? pathName : "Subclass Path",
+                                        superName != nullptr ? superName : "Super");
+                    choices.push_back(SubclassEditorChoice{source.socketEntryListIndex,
+                                                           candidate.selection,
+                                                           defaultEntry,
+                                                           semanticBucket,
+                                                           candidate.sourcePath,
+                                                           representativeHash,
+                                                           source.characterClass,
+                                                           source.name,
+                                                           label.data()});
+                }
+                if (rawCount != 0) continue;
+            }
+        }
+
+        std::vector<RawChoice> raw{};
+        raw.reserve(entries.entries.size());
+        for (std::size_t entryIndex = 0; entryIndex < entries.entries.size(); ++entryIndex) {
+            std::uint8_t destination =
+                state::build_data::socket_entry_buckets::kNoDestinationBucket;
+            if (!state::build_data::find_socket_entry_bucket(
+                    source.socketEntryListIndex, static_cast<std::uint8_t>(entryIndex), destination)
+                || destination != semanticBucket) {
+                continue;
+            }
+            state::build_data::abilities::Selection selection{};
+            std::size_t pathOrdinal = 0;
+            if (!subclass_editor_selection_for_entry(source, entries,
+                                                      static_cast<std::uint8_t>(entryIndex),
+                                                      selection, &pathOrdinal)) {
+                continue;
+            }
+            state::build_data::abilities::Definition published{};
+            if (!state::build_data::find_ability_buckets(source.socketEntryListIndex,
+                                                          selection, published)
+                || semanticBucket >= published.buckets.size()) {
+                continue;
+            }
+            const auto& bucket = published.buckets[semanticBucket];
+            if (bucket.kind == state::build_data::abilities::kEmptyBucketKind) continue;
+            raw.push_back(RawChoice{selection, bucket, static_cast<std::uint8_t>(entryIndex), 0xFF});
+        }
+
+        for (std::size_t index = 0; index < raw.size(); ++index) {
+            const RawChoice& candidate = raw[index];
+            const auto& sourceEntry = entries.entries[candidate.entry];
+            std::uint32_t representativeHash = 0;
+            // SunriseAPI's Shadowkeep subclass catalog is keyed by the actual socket entry.
+            // Use that exact entry map as the authoritative UI identity. Package/hash names are
+            // still used below for diagnostics/fallback only, because published buckets contain
+            // wrappers/shared state in addition to the selected ability.
+            const char* canonicalName = known_subclass_ability_name(source.name, slot, candidate.entry);
+
+            // First fallback: a package hash unique to this selector. This is the important part:
+            // ability buckets contain several hashes (shared category state, wrappers and the
+            // actual selected ability). The old code blindly named hashes[0], which is why a
+            // Scatter-labelled row could actually publish Axion Bolt. A unique delta hash is the
+            // best identity signal available from the extracted package graph.
+            if (canonicalName == nullptr) for (std::size_t h = 0; h < candidate.bucket.hashCount; ++h) {
+                const std::uint32_t hash = candidate.bucket.hashes[h];
+                if (hash == 0) continue;
+                bool heldElsewhere = false;
+                for (std::size_t other = 0; other < raw.size(); ++other) {
+                    if (other != index && bucket_holds_hash(raw[other].bucket, hash)) {
+                        heldElsewhere = true;
+                        break;
+                    }
+                }
+                if (heldElsewhere) continue;
+                const std::string_view discovered = display_name(hash);
+                if (const char* canonical = canonical_subclass_ability_name(source.name, slot, discovered);
+                    canonical != nullptr) {
+                    representativeHash = hash;
+                    canonicalName = canonical;
+                    break;
+                }
+            }
+
+            // Second choice: any published hash whose extracted name is a valid ability for this
+            // exact subclass/slot. This still avoids ordinal assumptions entirely.
+            if (canonicalName == nullptr) {
+                for (std::size_t h = 0; h < candidate.bucket.hashCount; ++h) {
+                    const std::uint32_t hash = candidate.bucket.hashes[h];
+                    if (hash == 0) continue;
+                    const std::string_view discovered = display_name(hash);
+                    if (const char* canonical = canonical_subclass_ability_name(source.name, slot, discovered);
+                        canonical != nullptr) {
+                        representativeHash = hash;
+                        canonicalName = canonical;
+                        break;
+                    }
+                }
+            }
+
+            // The selector's plug source is useful when the bucket identity itself has no display
+            // name, but only accept it when it resolves to a known valid ability name. Never fall
+            // back to the old hardcoded entry-number table: entry numbering is not stable.
+            if (canonicalName == nullptr && sourceEntry.plugSource != 0) {
+                const std::string_view discovered = display_name(sourceEntry.plugSource);
+                if (const char* canonical = canonical_subclass_ability_name(source.name, slot, discovered);
+                    canonical != nullptr) {
+                    representativeHash = sourceEntry.plugSource;
+                    canonicalName = canonical;
+                }
+            }
+
+            if (representativeHash == 0) {
+                for (std::size_t h = 0; h < candidate.bucket.hashCount; ++h) {
+                    const std::uint32_t hash = candidate.bucket.hashes[h];
+                    if (hash == 0) continue;
+                    bool heldElsewhere = false;
+                    for (std::size_t other = 0; other < raw.size(); ++other) {
+                        if (other != index && bucket_holds_hash(raw[other].bucket, hash)) {
+                            heldElsewhere = true;
+                            break;
+                        }
+                    }
+                    if (!heldElsewhere) {
+                        representativeHash = hash;
+                        break;
+                    }
+                }
+            }
+            if (representativeHash == 0 && candidate.bucket.hashCount != 0) {
+                representativeHash = candidate.bucket.hashes[0];
+            }
+
+            std::array<char, 256> label{};
+            if (canonicalName != nullptr) {
+                (void)std::snprintf(label.data(), label.size(), "%s | %s",
+                                    source.name.c_str(), canonicalName);
+            } else if (representativeHash != 0) {
+                // Correctness is preferable to a confident-but-wrong label. If installed package
+                // names cannot identify this selector, expose its exact representative hash.
+                (void)std::snprintf(label.data(), label.size(), "%s | Ability 0x%08X",
+                                    source.name.c_str(), representativeHash);
+            } else {
+                (void)std::snprintf(label.data(), label.size(), "%s | Ability",
+                                    source.name.c_str());
+            }
+
+            choices.push_back(SubclassEditorChoice{source.socketEntryListIndex,
+                                                   candidate.selection,
+                                                   candidate.entry,
+                                                   semanticBucket,
+                                                   0xFF,
+                                                   representativeHash,
+                                                   source.characterClass,
+                                                   source.name,
+                                                   label.data()});
+        }
+    }
+}
+
+
+[[nodiscard]] bool subclass_choice_matches(
+    const SubclassEditorChoice& choice,
+    const state::runtime::subclass_ability_override::Choice& active) noexcept {
+    return active.enabled
+           && choice.sourceSocketEntryListIndex == active.sourceSocketEntryListIndex
+           && choice.sourceEntry == active.sourceEntry
+           && choice.sourceSelection == active.sourceSelection;
+}
+
+[[nodiscard]] ImVec4 subclass_class_color(state::CharacterClass characterClass) noexcept {
+    switch (characterClass) {
+    case state::CharacterClass::hunter: return ImVec4(0.22F, 0.58F, 1.00F, 1.0F);
+    case state::CharacterClass::warlock: return ImVec4(1.00F, 0.82F, 0.20F, 1.0F);
+    case state::CharacterClass::titan: return ImVec4(0.95F, 0.24F, 0.22F, 1.0F);
+    default: return ImVec4(0.78F, 0.80F, 0.84F, 1.0F);
+    }
+}
+
+[[nodiscard]] ImVec4 subclass_element_color(std::string_view sourceName,
+                                             state::CharacterClass characterClass) noexcept {
+    if (subclass_name_is(sourceName, "Arcstrider") || subclass_name_is(sourceName, "Striker")
+        || subclass_name_is(sourceName, "Stormcaller")) {
+        return ImVec4(0.24F, 0.66F, 1.00F, 1.0F);
+    }
+    if (subclass_name_is(sourceName, "Gunslinger") || subclass_name_is(sourceName, "Sunbreaker")
+        || subclass_name_is(sourceName, "Dawnblade")) {
+        return ImVec4(1.00F, 0.46F, 0.12F, 1.0F);
+    }
+    if (subclass_name_is(sourceName, "Nightstalker") || subclass_name_is(sourceName, "Sentinel")
+        || subclass_name_is(sourceName, "Voidwalker")) {
+        return ImVec4(0.62F, 0.34F, 0.96F, 1.0F);
+    }
+    return subclass_class_color(characterClass);
+}
+
+void draw_subclass_fallback_icon(const SubclassEditorChoice& choice,
+                                 SubclassEditorSlot slot,
+                                 const ImVec2& start,
+                                 float extent) noexcept {
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    const ImVec2 center(start.x + extent * 0.5F, start.y + extent * 0.5F);
+    const bool classColored = slot == SubclassEditorSlot::movement
+                              || slot == SubclassEditorSlot::classAbility;
+    const ImVec4 color = classColored ? subclass_class_color(choice.characterClass)
+                                      : subclass_element_color(choice.sourceName, choice.characterClass);
+    const ImU32 fill = ImGui::ColorConvertFloat4ToU32(color);
+    ImVec4 edgeColor = color;
+    edgeColor.x = (std::min)(1.0F, edgeColor.x + 0.18F);
+    edgeColor.y = (std::min)(1.0F, edgeColor.y + 0.18F);
+    edgeColor.z = (std::min)(1.0F, edgeColor.z + 0.18F);
+    const ImU32 edge = ImGui::ColorConvertFloat4ToU32(edgeColor);
+    const float r = extent * 0.34F;
+
+    switch (slot) {
+    case SubclassEditorSlot::super:
+        draw->AddCircleFilled(center, r * 0.72F, fill, 16);
+        for (int i = 0; i < 8; ++i) {
+            const float a = 0.78539816339F * static_cast<float>(i);
+            const ImVec2 p1(center.x + std::cos(a) * r * 0.82F,
+                            center.y + std::sin(a) * r * 0.82F);
+            const ImVec2 p2(center.x + std::cos(a) * r * 1.28F,
+                            center.y + std::sin(a) * r * 1.28F);
+            draw->AddLine(p1, p2, edge, 2.0F);
+        }
+        break;
+    case SubclassEditorSlot::grenade:
+        draw->AddCircleFilled(center, r, fill, 16);
+        draw->AddLine(ImVec2(center.x + r * 0.42F, center.y - r * 0.72F),
+                      ImVec2(center.x + r * 0.82F, center.y - r * 1.08F), edge, 2.0F);
+        break;
+    case SubclassEditorSlot::melee: {
+        const ImVec2 pts[4]{ImVec2(center.x, center.y - r),
+                            ImVec2(center.x + r, center.y),
+                            ImVec2(center.x, center.y + r),
+                            ImVec2(center.x - r, center.y)};
+        draw->AddConvexPolyFilled(pts, 4, fill);
+        draw->AddPolyline(pts, 4, edge, ImDrawFlags_Closed, 1.5F);
+        break;
+    }
+    case SubclassEditorSlot::movement:
+        draw->AddTriangleFilled(ImVec2(center.x, center.y - r),
+                                ImVec2(center.x + r, center.y + r * 0.65F),
+                                ImVec2(center.x - r, center.y + r * 0.65F), fill);
+        draw->AddLine(ImVec2(center.x, center.y + r * 0.18F),
+                      ImVec2(center.x, center.y + r * 1.15F), edge, 2.0F);
+        break;
+    case SubclassEditorSlot::classAbility: {
+        const ImVec2 pts[6]{ImVec2(center.x, center.y - r),
+                            ImVec2(center.x + r * 0.86F, center.y - r * 0.42F),
+                            ImVec2(center.x + r * 0.70F, center.y + r * 0.62F),
+                            ImVec2(center.x, center.y + r),
+                            ImVec2(center.x - r * 0.70F, center.y + r * 0.62F),
+                            ImVec2(center.x - r * 0.86F, center.y - r * 0.42F)};
+        draw->AddConvexPolyFilled(pts, 6, fill);
+        draw->AddPolyline(pts, 6, edge, ImDrawFlags_Closed, 1.5F);
+        break;
+    }
+    }
+}
+
+[[nodiscard]] const char* subclass_class_name(state::CharacterClass characterClass) noexcept {
+    switch (characterClass) {
+    case state::CharacterClass::hunter: return "Hunter";
+    case state::CharacterClass::warlock: return "Warlock";
+    case state::CharacterClass::titan: return "Titan";
+    default: return "Class";
+    }
+}
+
+[[nodiscard]] std::string_view effective_super_source_name(
+    const state::CharacterState& character,
+    const std::vector<SubclassEditorSource>& sources) noexcept {
+    state::runtime::subclass_ability_override::Choice active{};
+    if (state::runtime::subclass_ability_override::get(
+            character.soid, state::runtime::subclass_ability_override::Slot::super, active)) {
+        for (const auto& source : sources) {
+            if (source.socketEntryListIndex == active.sourceSocketEntryListIndex) return source.name;
+        }
+    }
+    constexpr std::size_t kSubclassSlot =
+        static_cast<std::size_t>(inventory::EquipmentSlot::subclass);
+    const auto& equipped = character.equipment.slots[kSubclassSlot];
+    state::build_data::items::Definition definition{};
+    item_details::Definition detail{};
+    if (equipped.has_value()
+        && state::build_data::find_item_definition_hash(equipped->definitionHash, definition)
+        && state::build_data::find_configured_item_detail(definition.definitionIndex, detail)) {
+        for (const auto& source : sources) {
+            if (source.socketEntryListIndex == detail.socketEntryListIndex) return source.name;
+        }
+    }
+    return {};
+}
+
+void normalize_shared_class_choices(const state::CharacterState& character,
+                                    const std::vector<SubclassEditorSource>& sources,
+                                    SubclassEditorSlot slot,
+                                    std::vector<SubclassEditorChoice>& choices) {
+    if (slot != SubclassEditorSlot::movement && slot != SubclassEditorSlot::classAbility) return;
+    const std::string_view preferred = effective_super_source_name(character, sources);
+    std::stable_sort(choices.begin(), choices.end(), [preferred](const auto& left, const auto& right) {
+        const bool leftPreferred = !preferred.empty()
+            && subclass_element_color(left.sourceName, left.characterClass).x
+               == subclass_element_color(preferred, left.characterClass).x;
+        const bool rightPreferred = !preferred.empty()
+            && subclass_element_color(right.sourceName, right.characterClass).x
+               == subclass_element_color(preferred, right.characterClass).x;
+        return leftPreferred && !rightPreferred;
+    });
+    for (auto& choice : choices) {
+        const std::size_t split = choice.label.rfind(" | ");
+        const std::string ability = split == std::string::npos ? choice.label : choice.label.substr(split + 3);
+        choice.label = std::string{subclass_class_name(choice.characterClass)} + " | " + ability;
+    }
+    std::vector<SubclassEditorChoice> unique{};
+    unique.reserve(choices.size());
+    for (const auto& choice : choices) {
+        const bool duplicate = std::any_of(unique.begin(), unique.end(), [&](const auto& heldChoice) {
+            return heldChoice.label == choice.label;
+        });
+        if (!duplicate) unique.push_back(choice);
+    }
+    choices.swap(unique);
+}
+
+void draw_subclass_editor_slot(const state::CharacterState& character,
+                               const std::vector<SubclassEditorSource>& sources,
+                               SubclassEditorSlot slot) {
+    std::vector<SubclassEditorChoice> choices{};
+    build_subclass_editor_choices(sources, slot, choices);
+    normalize_shared_class_choices(character, sources, slot, choices);
+    const auto runtimeSlot = runtime_override_slot(slot);
+    state::runtime::subclass_ability_override::Choice active{};
+    const bool overridden =
+        state::runtime::subclass_ability_override::get(character.soid, runtimeSlot, active);
+    const char* preview = "Default Subclass Selection";
+    bool foundActiveLabel = false;
+    if (overridden) {
+        for (const SubclassEditorChoice& choice : choices) {
+            if (subclass_choice_matches(choice, active)) {
+                preview = choice.label.c_str();
+                foundActiveLabel = true;
+                break;
+            }
+        }
+        if (!foundActiveLabel) {
+            preview = "Custom override";
+        }
+    }
+
+    ImGui::TextDisabled("%s", subclass_editor_slot_label(slot));
+    ImGui::SetNextItemWidth(-1.0F);
+    std::array<char, 64> comboId{};
+    (void)std::snprintf(comboId.data(), comboId.size(), "##subclass_%u", static_cast<unsigned>(slot));
+    if (ImGui::BeginCombo(comboId.data(), preview)) {
+        const bool nativeSelected = !overridden;
+        if (ImGui::Selectable("Default Subclass Selection", nativeSelected)) {
+            state::runtime::subclass_ability_override::clear(character.soid, runtimeSlot);
+        }
+        if (nativeSelected) {
+            ImGui::SetItemDefaultFocus();
+        }
+        for (const SubclassEditorChoice& choice : choices) {
+            const bool selected = overridden && subclass_choice_matches(choice, active);
+            ImGui::PushID(static_cast<int>(choice.sourceSocketEntryListIndex) * 257
+                          + static_cast<int>(choice.sourceEntry));
+            const float iconExtent = scaled(24.0F);
+            const ImVec2 iconStart = ImGui::GetCursorScreenPos();
+            ImGui::Dummy(ImVec2(iconExtent, iconExtent));
+            draw_subclass_fallback_icon(choice, slot, iconStart, iconExtent);
+            ImGui::SameLine();
+            const bool clicked = ImGui::Selectable(choice.label.c_str(), selected,
+                                                   ImGuiSelectableFlags_None, ImVec2(0.0F, iconExtent));
+            if (clicked) {
+                state::runtime::subclass_ability_override::Choice next{};
+                next.enabled = true;
+                next.sourceSocketEntryListIndex = choice.sourceSocketEntryListIndex;
+                next.sourceSelection = choice.sourceSelection;
+                next.sourceEntry = choice.sourceEntry;
+                next.sourcePath = choice.sourcePath;
+                (void)state::runtime::subclass_ability_override::set(
+                    character.soid, runtimeSlot, next);
+                state::build_data::socket_entry_lists::EntryTable logEntries{};
+                std::uint32_t logHash = 0;
+                if (state::build_data::find_socket_entry_table(choice.sourceSocketEntryListIndex, logEntries)
+                    && choice.sourceEntry < logEntries.entries.size()) {
+                    logHash = logEntries.entries[choice.sourceEntry].plugSource;
+                }
+                core::log::writef(core::log::Channel::server, core::log::Level::info,
+                    "ev=subclass_override_staged slot=%s label=\"%s\" source_list=%u entry=%u hash=0x%08X path=%u",
+                    subclass_editor_slot_label(slot), choice.label.c_str(),
+                    static_cast<unsigned>(choice.sourceSocketEntryListIndex),
+                    static_cast<unsigned>(choice.sourceEntry), logHash,
+                    static_cast<unsigned>(choice.sourcePath));
+                (void)std::snprintf(g_message.data(),
+                                    g_message.size(),
+                                    "%s override staged. Press Apply + Refresh.",
+                                    subclass_editor_slot_label(slot));
+            }
+            if (selected) {
+                ImGui::SetItemDefaultFocus();
+            }
+            ImGui::PopID();
+        }
+        ImGui::EndCombo();
+    }
+}
+
+[[nodiscard]] bool secondary_choice_matches(
+    const SecondaryPerkChoice& choice,
+    const state::runtime::subclass_ability_override::Choice& active) noexcept {
+    return active.enabled
+        && active.secondaryHash == choice.hash
+        && active.sourceSocketEntryListIndex == choice.sourceSocketEntryListIndex
+        && active.sourceEntry == choice.sourceEntry
+        && active.sourceSelection == choice.sourceSelection;
+}
+
+void draw_secondary_perk_slot(const state::CharacterState& character,
+                              const std::vector<SecondaryPerkChoice>& choices,
+                              std::size_t slotIndex) {
+    using RuntimeSlot = state::runtime::subclass_ability_override::Slot;
+    const RuntimeSlot runtimeSlot = slotIndex == 0 ? RuntimeSlot::secondary1 : RuntimeSlot::secondary2;
+    state::runtime::subclass_ability_override::Choice active{};
+    const bool hasActive = state::runtime::subclass_ability_override::get(character.soid, runtimeSlot, active);
+    const char* preview = "Default / None";
+    for (const auto& choice : choices) {
+        if (hasActive && secondary_choice_matches(choice, active)) {
+            preview = choice.label.c_str();
+            break;
+        }
+    }
+    std::array<char, 48> comboId{};
+    (void)std::snprintf(comboId.data(), comboId.size(), "##secondary_perk_%zu", slotIndex);
+    ImGui::TextDisabled("SECONDARY PERK %zu", slotIndex + 1);
+    ImGui::SetNextItemWidth(-1.0F);
+    if (ImGui::BeginCombo(comboId.data(), preview)) {
+        if (ImGui::Selectable("Default / None", !hasActive)) {
+            state::runtime::subclass_ability_override::clear(character.soid, runtimeSlot);
+        }
+        for (const auto& choice : choices) {
+            // A perk hash can legitimately appear in more than one subclass/path. Include the
+            // source layout, source entry and destination slot so every row has a stable unique ID.
+            ImGui::PushID(static_cast<int>(slotIndex));
+            ImGui::PushID(static_cast<int>(choice.sourceSocketEntryListIndex));
+            ImGui::PushID(static_cast<int>(choice.sourceEntry));
+            ImGui::PushID(static_cast<int>(choice.hash));
+            const bool selected = hasActive && secondary_choice_matches(choice, active);
+            if (ImGui::Selectable(choice.label.c_str(), selected)) {
+                state::runtime::subclass_ability_override::Choice next{};
+                next.enabled = true;
+                next.sourceSocketEntryListIndex = choice.sourceSocketEntryListIndex;
+                next.sourceSelection = choice.sourceSelection;
+                next.sourceEntry = choice.sourceEntry;
+                next.secondaryHash = choice.hash;
+                // Secondary perks retain overflow publication, and active/passive nodes also
+                // transplant their complete native source bucket by semantic kind. This is the
+                // cross-class test path for Icarus Dash and the same mechanism is useful for
+                // Arc Soul, Phoenix Dive, Second Shield and other authored tree actions.
+                next.secondaryNativeTransplant = true;
+                (void)state::runtime::subclass_ability_override::set(character.soid, runtimeSlot, next);
+                std::uint8_t logBucket = state::build_data::socket_entry_buckets::kNoDestinationBucket;
+                state::build_data::abilities::Definition logPublished{};
+                unsigned logKind = 0xFFu;
+                unsigned logCount = 0;
+                if (state::build_data::find_socket_entry_bucket(choice.sourceSocketEntryListIndex,
+                                                                  choice.sourceEntry, logBucket)
+                    && state::build_data::find_ability_buckets(choice.sourceSocketEntryListIndex,
+                                                               choice.sourceSelection, logPublished)
+                    && logBucket < logPublished.buckets.size()) {
+                    logKind = static_cast<unsigned>(logPublished.buckets[logBucket].kind);
+                    logCount = static_cast<unsigned>(logPublished.buckets[logBucket].hashCount);
+                }
+                core::log::writef(core::log::Channel::server, core::log::Level::info,
+                    "ev=subclass_override_staged slot=secondary%zu label=\"%s\" source_list=%u entry=%u hash=0x%08X source_bucket=%u kind=%u native_hashes=%u route=native+overflow",
+                    slotIndex + 1, choice.label.c_str(),
+                    static_cast<unsigned>(choice.sourceSocketEntryListIndex),
+                    static_cast<unsigned>(choice.sourceEntry), choice.hash,
+                    static_cast<unsigned>(logBucket), logKind, logCount);
+                (void)std::snprintf(g_message.data(), g_message.size(),
+                                    "Secondary Perk %zu staged. Press Apply + Refresh.", slotIndex + 1);
+            }
+            ImGui::PopID();
+            ImGui::PopID();
+            ImGui::PopID();
+            ImGui::PopID();
+        }
+        ImGui::EndCombo();
+    }
+}
+
+
+void draw_subclass_editor_panel(const state::AccountState& account,
+                                const state::CharacterState& character) {
+    if (!state::build_data::ability_buckets_ready()
+        || !state::build_data::socket_entry_buckets_ready()) {
+        ImGui::TextDisabled("Subclass data is finishing its boot-time build...");
+        return;
+    }
+
+    std::vector<SubclassEditorSource> sources{};
+    collect_subclass_editor_sources(account, sources);
+    if (sources.empty()) {
+        ImGui::TextDisabled("No subclass sources are available for the configured characters.");
+        return;
+    }
+
+    ImGui::TextUnformatted("SUBCLASS LOADOUT");
+    ImGui::SameLine();
+    ImGui::TextDisabled("Native paths and individual overrides");
+    ImGui::TextDisabled("Select a path, then replace individual abilities or up to two path perks. Movement follows the selected path element automatically.");
+    ImGui::Spacing();
+
+    // Super/path gets the full row because the native Way / Code / Attunement names are longer.
+    draw_subclass_editor_slot(character, sources, SubclassEditorSlot::super);
+    ImGui::Spacing();
+
+    std::vector<SecondaryPerkChoice> secondaryChoices{};
+    build_secondary_perk_choices(sources, secondaryChoices);
+
+    if (ImGui::BeginTable("subclass_loadout_grid", 2,
+                          ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_BordersInnerV)) {
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        draw_subclass_editor_slot(character, sources, SubclassEditorSlot::grenade);
+        ImGui::TableSetColumnIndex(1);
+        draw_subclass_editor_slot(character, sources, SubclassEditorSlot::melee);
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        draw_subclass_editor_slot(character, sources, SubclassEditorSlot::movement);
+        ImGui::TableSetColumnIndex(1);
+        draw_subclass_editor_slot(character, sources, SubclassEditorSlot::classAbility);
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        draw_secondary_perk_slot(character, secondaryChoices, 0);
+        ImGui::TableSetColumnIndex(1);
+        draw_secondary_perk_slot(character, secondaryChoices, 1);
+        ImGui::EndTable();
+    }
+
+    ImGui::Spacing();
+    if (ImGui::Button("Apply + Refresh", ImVec2(scaled(150.0F), 0.0F))) {
+        const bool queued = server::bap::request_account_resync();
+        (void)std::snprintf(g_message.data(),
+                            g_message.size(),
+                            queued ? "Subclass loadout applied; account refresh queued."
+                                   : "Loadout staged, but account refresh could not be queued.");
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Restore to Default", ImVec2(scaled(165.0F), 0.0F))) {
+        state::runtime::subclass_ability_override::clear_character(character.soid);
+        (void)server::bap::request_account_resync();
+        (void)std::snprintf(g_message.data(),
+                            g_message.size(),
+                            "Subclass overrides cleared; default loadout restored.");
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("%zu paths | %zu secondary perks",
+                        sources.size(),
+                        secondaryChoices.size());
+    if (g_message[0] != '\0') {
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s", g_message.data());
+    }
+}
+
+
 void draw_editor_header() noexcept {
 
     // Keep the safety notice out of the tab row. A smaller, right-aligned warning leaves the
@@ -5910,6 +7381,19 @@ void draw_editor_header() noexcept {
     if (draw_editor_page_tab("ARMOR", armor, scaled(118.0F), tabHeight, scaled(-1.5F))) {
 
         set_editor_page(EditorPage::armor);
+    }
+
+    ImGui::SameLine(0.0F, scaled(8.0F));
+
+    const bool subclassSelected = g_editorPage == EditorPage::subclass;
+
+    if (draw_editor_page_tab("SUBCLASS",
+                             subclassSelected,
+                             scaled(138.0F),
+                             tabHeight,
+                             scaled(-1.0F))) {
+
+        set_editor_page(EditorPage::subclass);
     }
 
     ImGui::SameLine(0.0F, scaled(8.0F));
@@ -5953,6 +7437,13 @@ void draw() noexcept {
     }
 
     draw_editor_header();
+
+    if (g_editorPage == EditorPage::subclass) {
+
+        draw_subclass_editor_panel(account, account.characters[characterIndex]);
+
+        return;
+    }
 
     if (g_editorPage == EditorPage::randomizer) {
 

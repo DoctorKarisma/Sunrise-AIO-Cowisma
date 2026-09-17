@@ -148,6 +148,7 @@
     <ClCompile Include="src\middleware\web_service\messages\opcode702_codec.cpp" />
     <ClCompile Include="src\middleware\web_service\messages\opcode406_codec.cpp" />
     <ClCompile Include="src\middleware\web_service\messages\opcode1820_codec.cpp" />
+    <ClCompile Include="src\state\runtime\subclass_ability_override.cpp" />
     <ClCompile Include="src\state\runtime\state_account_runtime.cpp" />
     <ClCompile Include="src\state\runtime\state_account_acquisition_runtime.cpp" />
     <ClCompile Include="src\state\runtime\state_account_reward_grant_runtime.cpp" />
@@ -1425,6 +1426,7 @@
     <ClInclude Include="src\state\unlocks\unlocks_runtime.h" />
     <ClInclude Include="src\state\unlocks\unlocks_records.h" />
     <ClInclude Include="src\state\runtime\runtime.h" />
+    <ClInclude Include="src\state\runtime\subclass_ability_override.h" />
     <ClInclude Include="src\state\runtime\state_account_transaction_helpers.h" />
     <ClInclude Include="src\state\runtime\state_rolled_socket_plugs.h" />
     <ClInclude Include="src\state\runtime\state.h" />
@@ -2157,3 +2159,4 @@
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
+
