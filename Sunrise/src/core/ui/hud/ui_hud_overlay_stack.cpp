@@ -6,6 +6,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdio>
+#include <cstring>
 #include <imgui.h>
 
 #include "../../../client/player/player_position.h"
@@ -48,39 +49,32 @@ void draw_coordinates() noexcept {
 /** One overlay's identity, frame entry and starting switch state. */
 struct Entry {
     const char* displayName;
-    /** Key the switch file stores this overlay under. It must outlive every table change. */
     const char* storageKey;
     const char* windowId;
     void (*draw)() noexcept;
     bool startsOn;
 };
 
-/** 24 pixels keep the stack clear of the viewport corner, as the other overlays do. */
 constexpr float kViewportMargin = 24.0F;
-
-/** 8 pixels separate two stacked overlays. */
 constexpr float kOverlayGap = 8.0F;
 
-/** Overlays carry no decoration, take no input, and are never saved. */
+constexpr char kThemeSunriseOriginal[] = "sunrise_original";
+constexpr char kThemeRgb[] = "rgb";
+
+constexpr std::size_t kThemeStorageCapacity = 32;
+
 constexpr ImGuiWindowFlags kOverlayFlags =
     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav
     | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize
     | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoMove;
 
-/** Overlay count, taken from the enum so the table and the switches cannot disagree. */
 constexpr std::size_t kOverlayCount = static_cast<std::size_t>(Overlay::count);
-
-/** Status-line count, taken from the enum for the same reason. */
 constexpr std::size_t kStatusLineCount = static_cast<std::size_t>(StatusLine::count);
-
-/** Every switch the file carries: one per overlay, then one per status line. */
 constexpr std::size_t kSwitchCount = kOverlayCount + kStatusLineCount;
 
-/** Every overlay, in Overlay order. The menu lists them and the corner stacks them in it. */
 constexpr std::array<Entry, kOverlayCount> kOverlays{
     Entry{"Sunrise Card", "sunrise_card", "##sunrise_hud_card", &overlays::logo::draw, true},
     Entry{"Coordinates", "coordinates", "##sunrise_hud_coordinates", &draw_coordinates, false},
-    // Diagnostic overlays start off because an ordinary run does not need them on screen.
     Entry{
         "Current Status", "current_status", "##sunrise_hud_status", &overlays::status::draw, false},
     Entry{"Session", "session", "##sunrise_hud_session", &overlays::session::draw, false},
@@ -96,15 +90,12 @@ constexpr std::array<Entry, kOverlayCount> kOverlays{
           false},
 };
 
-/** One status line's identity and starting switch state. */
 struct LineEntry {
     const char* displayName;
-    /** Key the switch file stores this line under. It must outlive every table change. */
     const char* storageKey;
     bool startsOn;
 };
 
-/** Every status line, in StatusLine order. The overlay draws them in it. */
 constexpr std::array<LineEntry, kStatusLineCount> kStatusLines{
     LineEntry{"Activity", "status_activity", true},
     LineEntry{"Bubble", "status_bubble", true},
@@ -112,7 +103,6 @@ constexpr std::array<LineEntry, kStatusLineCount> kStatusLines{
     LineEntry{"Closest spawn", "status_closest_spawn", true},
 };
 
-/** @return The switch state every overlay starts with. */
 [[nodiscard]] constexpr std::array<bool, kOverlayCount> starting_state() noexcept {
     std::array<bool, kOverlayCount> state{};
 
@@ -123,7 +113,6 @@ constexpr std::array<LineEntry, kStatusLineCount> kStatusLines{
     return state;
 }
 
-/** @return The switch state every status line starts with. */
 [[nodiscard]] constexpr std::array<bool, kStatusLineCount> starting_line_state() noexcept {
     std::array<bool, kStatusLineCount> state{};
 
@@ -134,23 +123,28 @@ constexpr std::array<LineEntry, kStatusLineCount> kStatusLines{
     return state;
 }
 
-/** Switch state. Only the presentation thread reads or writes it. */
 std::array<bool, kOverlayCount> g_enabled{starting_state()};
-
-/** Status-line switch state, on the same thread. */
 std::array<bool, kStatusLineCount> g_lineEnabled{starting_line_state()};
 
-/** @param overlay Overlay to check. @return True when it names one of the entries. */
 [[nodiscard]] bool in_range(Overlay overlay) noexcept {
     return static_cast<std::size_t>(overlay) < kOverlayCount;
 }
 
-/** @param line Status line to check. @return True when it names one of the entries. */
 [[nodiscard]] bool in_range(StatusLine line) noexcept {
     return static_cast<std::size_t>(line) < kStatusLineCount;
 }
 
-/** @return Every file key paired with the switch state it holds now. */
+[[nodiscard]] const char* theme_storage_name() noexcept {
+    switch (theme::selected()) {
+    case theme::Style::sunriseOriginal:
+        return kThemeSunriseOriginal;
+
+    case theme::Style::rgb:
+    default:
+        return kThemeRgb;
+    }
+}
+
 [[nodiscard]] std::array<store::Switch, kSwitchCount> switch_state() noexcept {
     std::array<store::Switch, kSwitchCount> switches{};
 
@@ -165,27 +159,30 @@ std::array<bool, kStatusLineCount> g_lineEnabled{starting_line_state()};
     return switches;
 }
 
-/** Writes every switch. One file holds them all, so a partial save would drop the rest. */
-void save_switches() noexcept {
+void save_settings() noexcept {
     const std::array<store::Switch, kSwitchCount> switches = switch_state();
-
-    // A failed write is reported by the store and never blocks the switch itself.
-    (void)store::save(switches);
+    (void)store::save(switches, theme_storage_name(), theme::animated());
 }
 
 /**
- * Draws one overlay at a fixed position.
- * @param entry Overlay to draw.
- * @param position Top-left corner, in final framebuffer pixels.
- * @return Height the window took, which is known only after its content is submitted.
+ * HUD cards use the selected theme's border.
+ *
+ * RGB deliberately uses the live RGB cycle. Sunrise Original uses the normal ImGui border
+ * authored by the Sunrise theme instead of forcing an RGB override.
  */
+[[nodiscard]] ImVec4 overlay_border_color() noexcept {
+    if (theme::selected() == theme::Style::rgb) {
+        return theme::animated_border_color();
+    }
+
+    return ImGui::GetStyleColorVec4(ImGuiCol_Border);
+}
+
 [[nodiscard]] float draw_overlay(const Entry& entry, const ImVec2& position) noexcept {
     ImGui::SetNextWindowPos(position, ImGuiCond_Always);
 
-    // HUD cards use a slightly heavier edge so rounded corners remain as visible as the
-    // straight portions of the animated border.
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, scaling::dpi::pixels(1.0F));
-    ImGui::PushStyleColor(ImGuiCol_Border, theme::animated_border_color());
+    ImGui::PushStyleColor(ImGuiCol_Border, overlay_border_color());
 
     const bool submitContents = ImGui::Begin(entry.windowId, nullptr, kOverlayFlags);
 
@@ -204,12 +201,20 @@ void save_switches() noexcept {
 
 } // namespace
 
-/** Resolves the switch file and applies the saved state. */
 void initialize(void* module) noexcept {
     store::initialize(module);
 
     std::array<store::Switch, kSwitchCount> switches = switch_state();
-    store::load(switches);
+
+    /*
+     * RGB is the default for a fresh hud.json. An existing saved choice still wins.
+     */
+    char storedTheme[kThemeStorageCapacity]{};
+    (void)std::snprintf(storedTheme, sizeof(storedTheme), "%s", kThemeRgb);
+
+    bool storedAnimated = false;
+
+    store::load(switches, storedTheme, sizeof(storedTheme), storedAnimated);
 
     for (std::size_t index = 0; index < kOverlayCount; ++index) {
         g_enabled[index] = switches[index].on;
@@ -218,60 +223,92 @@ void initialize(void* module) noexcept {
     for (std::size_t index = 0; index < kStatusLineCount; ++index) {
         g_lineEnabled[index] = switches[kOverlayCount + index].on;
     }
+
+    /*
+     * Only the explicit Sunrise Original storage value selects Original.
+     * Missing, invalid or newer unknown values safely use the RGB default.
+     */
+    if (std::strcmp(storedTheme, kThemeSunriseOriginal) == 0) {
+        theme::set_selected(theme::Style::sunriseOriginal);
+    } else {
+        theme::set_selected(theme::Style::rgb);
+    }
+
+    theme::set_animated(storedAnimated);
 }
 
-/** Drops the switch file path. The switches keep their values. */
 void shutdown() noexcept {
     store::shutdown();
 }
 
-/** @return The overlay's menu label. */
 const char* display_name(Overlay overlay) noexcept {
     return in_range(overlay) ? kOverlays[static_cast<std::size_t>(overlay)].displayName : "";
 }
 
-/** @return True while the overlay draws. */
 bool enabled(Overlay overlay) noexcept {
     return in_range(overlay) && g_enabled[static_cast<std::size_t>(overlay)];
 }
 
-/** Switches one overlay on or off and saves every switch at once. */
 void set_enabled(Overlay overlay, bool on) noexcept {
     if (!in_range(overlay) || g_enabled[static_cast<std::size_t>(overlay)] == on) {
         return;
     }
 
     g_enabled[static_cast<std::size_t>(overlay)] = on;
-    save_switches();
+    save_settings();
 }
 
-/** @return The status line's menu label. */
 const char* display_name(StatusLine line) noexcept {
     return in_range(line) ? kStatusLines[static_cast<std::size_t>(line)].displayName : "";
 }
 
-/** @return True while the status line draws. */
 bool enabled(StatusLine line) noexcept {
     return in_range(line) && g_lineEnabled[static_cast<std::size_t>(line)];
 }
 
-/** Switches one status line on or off and saves every switch at once. */
 void set_enabled(StatusLine line, bool on) noexcept {
     if (!in_range(line) || g_lineEnabled[static_cast<std::size_t>(line)] == on) {
         return;
     }
 
     g_lineEnabled[static_cast<std::size_t>(line)] = on;
-    save_switches();
+    save_settings();
 }
 
-/** Draws every enabled overlay, stacked down the top-left corner. */
+theme::Style selected_theme() noexcept {
+    return theme::selected();
+}
+
+void set_selected_theme(theme::Style style) noexcept {
+    if (theme::selected() == style) {
+        return;
+    }
+
+    theme::set_selected(style);
+    save_settings();
+}
+
+bool animated_theme() noexcept {
+    return theme::animated();
+}
+
+void set_animated_theme(bool enabled) noexcept {
+    if (theme::animated() == enabled) {
+        return;
+    }
+
+    theme::set_animated(enabled);
+    save_settings();
+}
+
 bool draw(bool interfaceEnabled) noexcept {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
 
     if (!interfaceEnabled || viewport == nullptr) {
         return false;
     }
+
+    theme::update();
 
     const float margin = scaling::dpi::pixels(kViewportMargin);
     const float gap = scaling::dpi::pixels(kOverlayGap);

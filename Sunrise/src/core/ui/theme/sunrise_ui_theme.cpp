@@ -57,9 +57,74 @@ constexpr ImVec4 kTableRowAlt{1.0F, 1.0F, 1.0F, 0.025F};
 /** A zero-alpha shadow turns off the unused second window edge. */
 constexpr ImVec4 kTransparent{};
 
+/** Current base theme. Sunrise Original remains the default. */
+Style g_selected = Style::rgb;
+
+/**
+ * Optional animation setting.
+ * Phase 1 stores the state; ImAnim will consume it in the next integration stage.
+ */
+bool g_animated = false;
+
+/** @return A brighter version of the supplied RGB accent. */
+[[nodiscard]] ImVec4 rgb_hovered(const ImVec4& accent) noexcept {
+    return {
+        (std::min)(1.0F, accent.x + 0.15F),
+        (std::min)(1.0F, accent.y + 0.15F),
+        (std::min)(1.0F, accent.z + 0.15F),
+        1.0F,
+    };
+}
+
+/** @return A darker version of the supplied RGB accent. */
+[[nodiscard]] ImVec4 rgb_active(const ImVec4& accent) noexcept {
+    return {
+        accent.x * 0.78F,
+        accent.y * 0.78F,
+        accent.z * 0.78F,
+        1.0F,
+    };
+}
+
+/**
+ * Applies the colors that depend on the selected accent.
+ * @param style Style receiving the colors.
+ * @param accent Primary accent.
+ * @param accentHovered Brighter interactive accent.
+ * @param accentActive Darker pressed accent.
+ */
+void apply_accent(ImGuiStyle& style,
+                  const ImVec4& accent,
+                  const ImVec4& accentHovered,
+                  const ImVec4& accentActive) noexcept {
+    ImVec4 selection = accent;
+    selection.w = 0.28F;
+
+    ImVec4* colors = style.Colors;
+
+    colors[ImGuiCol_FrameBgActive] = accentActive;
+    colors[ImGuiCol_ScrollbarGrabActive] = accentActive;
+    colors[ImGuiCol_CheckMark] = accent;
+    colors[ImGuiCol_SliderGrab] = accent;
+    colors[ImGuiCol_SliderGrabActive] = accentHovered;
+    colors[ImGuiCol_ButtonActive] = accentActive;
+    colors[ImGuiCol_Header] = selection;
+    colors[ImGuiCol_HeaderActive] = accentActive;
+    colors[ImGuiCol_SeparatorHovered] = accent;
+    colors[ImGuiCol_SeparatorActive] = accentHovered;
+    colors[ImGuiCol_ResizeGrip] = selection;
+    colors[ImGuiCol_ResizeGripHovered] = accent;
+    colors[ImGuiCol_ResizeGripActive] = accentHovered;
+    colors[ImGuiCol_TextSelectedBg] = selection;
+    colors[ImGuiCol_NavCursor] = accent;
+    colors[ImGuiCol_TabSelectedOverline] = accent;
+    colors[ImGuiCol_TextLink] = accent;
+    colors[ImGuiCol_DragDropTarget] = accent;
+}
+
 } // namespace
 
-/** @return The current color in the slow animated RGB border cycle. */
+/** @return The current color in the slow animated RGB cycle. */
 ImVec4 animated_border_color() noexcept {
     /** One complete RGB cycle every 20 seconds. */
     constexpr float kCyclesPerSecond = 0.05F;
@@ -77,11 +142,17 @@ ImVec4 animated_border_color() noexcept {
     return {red, green, blue, 1.0F};
 }
 
-/** Applies the Sunrise colors and a fresh DPI-scaled copy of every authored size. */
+/** Applies the selected colors and a fresh DPI-scaled copy of every authored size. */
 void apply() noexcept {
+    if (ImGui::GetCurrentContext() == nullptr) {
+        return;
+    }
+
     const float fontSizeBase = ImGui::GetStyle().FontSizeBase;
+
     ImGuiStyle style{};
     ImGui::StyleColorsDark(&style);
+
     style.WindowPadding = kWindowPadding;
     style.FramePadding = kFramePadding;
     style.ItemSpacing = kItemSpacing;
@@ -97,6 +168,7 @@ void apply() noexcept {
     style.FrameBorderSize = kNoFrameBorderWidth;
 
     ImVec4* colors = style.Colors;
+
     colors[ImGuiCol_Text] = kText;
     colors[ImGuiCol_TextDisabled] = kMutedText;
     colors[ImGuiCol_WindowBg] = kWindow;
@@ -106,38 +178,20 @@ void apply() noexcept {
     colors[ImGuiCol_BorderShadow] = kTransparent;
     colors[ImGuiCol_FrameBg] = kControl;
     colors[ImGuiCol_FrameBgHovered] = kControlHovered;
-    colors[ImGuiCol_FrameBgActive] = kAccentActive;
     colors[ImGuiCol_TitleBg] = kWindow;
     colors[ImGuiCol_TitleBgActive] = kWindow;
     colors[ImGuiCol_TitleBgCollapsed] = kWindow;
     colors[ImGuiCol_ScrollbarBg] = kPanel;
     colors[ImGuiCol_ScrollbarGrab] = kControl;
     colors[ImGuiCol_ScrollbarGrabHovered] = kControlHovered;
-    colors[ImGuiCol_ScrollbarGrabActive] = kAccentActive;
-    colors[ImGuiCol_CheckMark] = kAccent;
-    colors[ImGuiCol_SliderGrab] = kAccent;
-    colors[ImGuiCol_SliderGrabActive] = kAccentHovered;
     colors[ImGuiCol_Button] = kControl;
     colors[ImGuiCol_ButtonHovered] = kControlHovered;
-    colors[ImGuiCol_ButtonActive] = kAccentActive;
-    colors[ImGuiCol_Header] = kSelection;
     colors[ImGuiCol_HeaderHovered] = kControlHovered;
-    colors[ImGuiCol_HeaderActive] = kAccentActive;
     colors[ImGuiCol_Separator] = kBorder;
-    colors[ImGuiCol_SeparatorHovered] = kAccent;
-    colors[ImGuiCol_SeparatorActive] = kAccentHovered;
-    colors[ImGuiCol_ResizeGrip] = kSelection;
-    colors[ImGuiCol_ResizeGripHovered] = kAccent;
-    colors[ImGuiCol_ResizeGripActive] = kAccentHovered;
-    colors[ImGuiCol_TextSelectedBg] = kSelection;
-    colors[ImGuiCol_NavCursor] = kAccent;
 
-    // Dear ImGui defaults these to its own blue, which is the only non-Sunrise colour left on a
-    // page built from tab bars and tables.
     colors[ImGuiCol_Tab] = kTab;
     colors[ImGuiCol_TabHovered] = kControlHovered;
     colors[ImGuiCol_TabSelected] = kTabSelected;
-    colors[ImGuiCol_TabSelectedOverline] = kAccent;
     colors[ImGuiCol_TabDimmed] = kPanel;
     colors[ImGuiCol_TabDimmedSelected] = kControl;
     colors[ImGuiCol_TabDimmedSelectedOverline] = kBorder;
@@ -146,9 +200,20 @@ void apply() noexcept {
     colors[ImGuiCol_TableBorderLight] = kBorder;
     colors[ImGuiCol_TableRowBg] = kTransparent;
     colors[ImGuiCol_TableRowBgAlt] = kTableRowAlt;
-    colors[ImGuiCol_TextLink] = kAccent;
     colors[ImGuiCol_TreeLines] = kBorder;
-    colors[ImGuiCol_DragDropTarget] = kAccent;
+
+    if (g_selected == Style::rgb) {
+        const ImVec4 accent = animated_border_color();
+        apply_accent(style, accent, rgb_hovered(accent), rgb_active(accent));
+    } else {
+        // These are Stan's authored Sunrise accent values.
+        apply_accent(style, kAccent, kAccentHovered, kAccentActive);
+
+        // Keep the exact authored Sunrise selection value.
+        colors[ImGuiCol_Header] = kSelection;
+        colors[ImGuiCol_ResizeGrip] = kSelection;
+        colors[ImGuiCol_TextSelectedBg] = kSelection;
+    }
 
     // Scaling a fresh default style stops repeated monitor changes from building up error.
     const float scale = scaling::dpi::current();
@@ -161,6 +226,64 @@ void apply() noexcept {
     style.FontScaleMain = scale;
 
     ImGui::GetStyle() = style;
+}
+
+/** Updates colors that change continuously while a frame is running. */
+void update() noexcept {
+    if (ImGui::GetCurrentContext() == nullptr || g_selected != Style::rgb) {
+        return;
+    }
+
+    ImGuiStyle& style = ImGui::GetStyle();
+
+    const ImVec4 accent = animated_border_color();
+    apply_accent(style, accent, rgb_hovered(accent), rgb_active(accent));
+}
+
+/** @return The currently selected base theme. */
+Style selected() noexcept {
+    return g_selected;
+}
+
+/** Selects the base theme and immediately applies it when possible. */
+void set_selected(Style style) noexcept {
+    if (style != Style::sunriseOriginal && style != Style::rgb) {
+        return;
+    }
+
+    if (g_selected == style) {
+        return;
+    }
+
+    g_selected = style;
+
+    if (ImGui::GetCurrentContext() != nullptr) {
+        apply();
+    }
+}
+
+/** @return Display name for a base theme. */
+const char* display_name(Style style) noexcept {
+    switch (style) {
+    case Style::sunriseOriginal:
+        return "Sunrise Original";
+
+    case Style::rgb:
+        return "RGB";
+
+    default:
+        return "Sunrise Original";
+    }
+}
+
+/** @return True when the optional animation layer is enabled. */
+bool animated() noexcept {
+    return g_animated;
+}
+
+/** Enables or disables the optional animation layer. */
+void set_animated(bool enabled) noexcept {
+    g_animated = enabled;
 }
 
 } // namespace sunrise::core::ui::theme

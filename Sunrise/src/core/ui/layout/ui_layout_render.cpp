@@ -34,7 +34,7 @@ constexpr float kGearEditorMinimumHeight = kPreferredWindowHeight;
 
 /** Upper authored Gear Editor width. The viewport still provides the final clamp. */
 constexpr float kGearEditorMaximumWidth = 1800.0F;
-/** Upper authored Gear Editor height. The viewport still provides the final clamp. */
+/** Upper authored Gear Editor height. */
 constexpr float kGearEditorMaximumHeight = 1100.0F;
 
 /** One press changes Gear Editor width by this many authored pixels. */
@@ -309,6 +309,20 @@ void draw_title() noexcept {
     ImGui::TextDisabled(SUNRISE_VER_STRING);
 }
 
+/**
+ * @return Border color for the main Sunrise surface.
+ *
+ * RGB keeps Cowisma's animated border. Sunrise Original uses the authored
+ * ImGui border from Stan's theme without an RGB override.
+ */
+[[nodiscard]] ImVec4 main_window_border_color() noexcept {
+    if (theme::selected() == theme::Style::rgb) {
+        return theme::animated_border_color();
+    }
+
+    return ImGui::GetStyleColorVec4(ImGuiCol_Border);
+}
+
 } // namespace
 
 /** Draws the centered Sunrise surface inside the caller's active Dear ImGui frame. */
@@ -364,9 +378,11 @@ bool render(bool visible) noexcept {
     // One style alpha fades the surface and everything drawn inside it together.
     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, progress);
 
-    // Cowisma gives the outer Sunrise surface a slow RGB border while leaving the internal
-    // cards and controls on Cow's original theme.
-    ImGui::PushStyleColor(ImGuiCol_Border, theme::animated_border_color());
+    /*
+     * RGB gets the animated Cowisma border.
+     * Sunrise Original gets Stan's authored border.
+     */
+    ImGui::PushStyleColor(ImGuiCol_Border, main_window_border_color());
 
     const bool submitContents = ImGui::Begin("Sunrise", nullptr, kMainWindowFlags);
 
