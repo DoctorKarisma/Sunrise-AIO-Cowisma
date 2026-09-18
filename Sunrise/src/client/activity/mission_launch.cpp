@@ -150,8 +150,12 @@ static_assert(offsetof(MemberRecord, launchState) == kMemberLaunchStateOffset);
 
 /** Size of the selection the constructor fills and the RPCs consume. */
 constexpr std::size_t kSelectionBytes = 0x120;
+/** The selection head places two signed indices after its two flag bytes. */
+constexpr std::size_t kSelectionSourceOffset = 2;
+constexpr std::size_t kSelectionDestinationOffset = 4;
 /** Selection fields past the destination that the launch never reads. */
-constexpr std::size_t kSelectionTailBytes = kSelectionBytes - 6;
+constexpr std::size_t kSelectionTailBytes =
+    kSelectionBytes - kSelectionDestinationOffset - sizeof(std::int16_t);
 
 /** One activity selection. The constructor writes it whole; the launch reads the head. */
 struct alignas(16) Selection {
@@ -162,8 +166,8 @@ struct alignas(16) Selection {
     std::array<std::byte, kSelectionTailBytes> opaque01{};
 };
 
-static_assert(offsetof(Selection, source) == 2);
-static_assert(offsetof(Selection, destination) == 4);
+static_assert(offsetof(Selection, source) == kSelectionSourceOffset);
+static_assert(offsetof(Selection, destination) == kSelectionDestinationOffset);
 static_assert(sizeof(Selection) == kSelectionBytes);
 
 // --- Launch policy ---
@@ -187,6 +191,8 @@ constexpr std::int32_t kCommitLaunch = 1;
 constexpr std::int32_t kSetupOrbitStep = 29;
 /** Boot-flow step `activity:in_world`. */
 constexpr std::int32_t kInWorldStep = 38;
+/** Boot-flow step `activity:watch_video`; a movie row's launch ends here. */
+constexpr std::int32_t kWatchVideoStep = 39;
 /** An arrival not confirmed inside this window reports as timed out. */
 constexpr std::uint64_t kArrivalTimeoutMs = 120'000;
 
@@ -345,7 +351,9 @@ submit(const Snapshot& state,
     const auto index = static_cast<std::int16_t>(state.index);
     const char* const package = natives.name(index);
     const auto& expected = rows[state.index].package;
-    if (package == nullptr || std::strncmp(package, expected.data(), expected.size()) != 0) {
+    // A movie row has no package; the client plays the movie, then starts the onward row itself.
+    if (!state::build_data::activities::plays_movie(rows[state.index])
+        && (package == nullptr || std::strncmp(package, expected.data(), expected.size()) != 0)) {
         return Status::descriptorRejected;
     }
     Selection selection{};
@@ -470,7 +478,10 @@ void poll(std::int32_t step) noexcept {
         const auto started = g_requestedAt;
         ReleaseSRWLockShared(&g_lock);
         g_leftOrbit = g_leftOrbit || step != kSetupOrbitStep;
-        if (g_leftOrbit && step == kInWorldStep && arrived(state, rows)) {
+        const bool movie = state.index < rows.size()
+                           && state::build_data::activities::plays_movie(rows[state.index]);
+        if (g_leftOrbit
+            && (movie ? step == kWatchVideoStep : step == kInWorldStep && arrived(state, rows))) {
             finish(Status::arrived);
         } else if (GetTickCount64() - started > kArrivalTimeoutMs) {
             finish(Status::timedOut);
@@ -481,13 +492,20 @@ void poll(std::int32_t step) noexcept {
         finish(Status::catalogUnavailable);
         return;
     }
-    if (state.index >= rows.size() || rows[state.index].name().empty()) {
+    if (state.index >= rows.size()) {
         finish(Status::entryUnavailable);
         return;
     }
+    const bool movie = state::build_data::activities::plays_movie(rows[state.index]);
     state::build_data::scenarios::Definition layout{};
-    if (!state::build_data::find_scenario_layout(rows[state.index].name(), layout)) {
+    if (!movie
+        && (rows[state.index].name().empty()
+            || !state::build_data::find_scenario_layout(rows[state.index].name(), layout))) {
         finish(Status::entryUnavailable);
+        return;
+    }
+    if (state.manual && movie) {
+        finish(Status::manualRejected);
         return;
     }
     if (state.manual) {

@@ -101,6 +101,7 @@ struct ManualScratch {
     std::size_t spawnCount{};
 };
 
+/** @return The first unsupported part of a manual arrival in published package data. */
 [[nodiscard]] inline ManualError validate_manual(const forced::ForcedDestination& value,
                                                  ManualScratch& scratch) noexcept {
     scratch.layout = {};
@@ -121,6 +122,7 @@ struct ManualScratch {
         value, scratch.layout, std::span(scratch.spawns).first(scratch.spawnCount));
 }
 
+/** @return The launcher message for a manual arrival validation result. */
 [[nodiscard]] inline const char* manual_error(ManualError error) noexcept {
     switch (error) {
     case ManualError::none:

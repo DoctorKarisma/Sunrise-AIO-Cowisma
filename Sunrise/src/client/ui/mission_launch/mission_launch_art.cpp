@@ -10,6 +10,7 @@ std::array<ID3D11ShaderResourceView*, state::build_data::activities::kIconCount>
 ID3D11Device* g_device{};
 bool g_attempted{};
 } // namespace
+/** Releases cached icon textures and the retained device before another upload attempt. */
 void release() noexcept {
     for (auto*& view : g_views) {
         if (view != nullptr) {
@@ -23,6 +24,7 @@ void release() noexcept {
     }
     g_attempted = false;
 }
+/** Uploads available icon images once per retained device. */
 void prepare(ID3D11Device* device) noexcept {
     if (device == nullptr) {
         return;
@@ -65,6 +67,7 @@ std::uint64_t texture(state::build_data::activities::Icon icon) noexcept {
     const auto index = static_cast<std::size_t>(icon);
     return index < g_views.size() ? reinterpret_cast<std::uint64_t>(g_views[index]) : 0;
 }
+/** Fits valid artwork inside the requested extent without enlarging source pixels. */
 DisplaySize display_size(state::build_data::activities::Icon icon,
                          float extent,
                          float framebufferScale) noexcept {

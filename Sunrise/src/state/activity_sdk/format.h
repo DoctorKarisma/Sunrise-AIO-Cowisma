@@ -10,9 +10,9 @@ namespace sunrise::state::activity_sdk::format {
 /** Eight-byte identity at the start of every runtime SDK pack. */
 inline constexpr std::array<char, 8> kMagic{'S', 'R', 'S', 'D', 'K', 'P', '0', '1'};
 /** Runtime-pack schema version accepted by this reader. */
-inline constexpr std::uint32_t kVersion = 38;
+inline constexpr std::uint32_t kVersion = 40;
 /** The ABI contains only activity identity, topology, placement, and panel metadata. */
-inline constexpr std::uint32_t kSectionCount = 46;
+inline constexpr std::uint32_t kSectionCount = 50;
 #if defined(SUNRISE_ACTIVITY_SDK_TESTING)
 /** The runtime accepts only the checked generated SDK build. Each pin is a SHA-256 digest. */
 inline constexpr std::array<std::byte, 32> kExpectedSdkBuildDigest{
@@ -424,7 +424,7 @@ inline constexpr std::int64_t kAbsentSignedValue = (-0x7FFFFFFFFFFFFFFFLL - 1);
 
 /** Fixed packed byte sizes make producer and consumer ABI drift fail at compile time. */
 inline constexpr std::size_t kSectionSize = 16;
-inline constexpr std::size_t kHeaderSize = 896;
+inline constexpr std::size_t kHeaderSize = 960;
 inline constexpr std::size_t kStringRefSize = 8;
 inline constexpr std::size_t kRangeSize = 8;
 inline constexpr std::size_t kActivitySize = 124;
@@ -760,9 +760,13 @@ enum class SectionIndex : std::uint32_t {
     actorSequenceTables,
     actorSequenceEntries,
     actorSequenceBindings,
+    dialogueCues,
+    combatObjectiveGroups,
+    actorAbilities,
+    actorAbilityTargets,
 };
 
-static_assert(static_cast<std::uint32_t>(SectionIndex::actorSequenceBindings) + 1 == kSectionCount);
+static_assert(static_cast<std::uint32_t>(SectionIndex::actorAbilityTargets) + 1 == kSectionCount);
 
 /** Exact activity-name/root join result retained for every activity row. */
 enum class ActivityJoinStatus : std::uint32_t {
@@ -1204,6 +1208,43 @@ struct TaskTarget final {
     std::uint32_t bitIndex{};
     std::uint32_t flags{};
     std::uint32_t reserved{};
+};
+
+/** One exact Type 2 actor owns a group and request in its local ability definition. */
+struct ActorAbility final {
+    std::uint32_t slotIndex{};
+    std::uint32_t actorClassIndex{};
+    std::uint32_t definitionTag{};
+    std::uint32_t groupHash{};
+    std::uint32_t requestHash{};
+};
+
+/** One authored Type 58 point bounds the ability evaluator's selector index. */
+struct ActorAbilityTarget final {
+    std::uint32_t slotIndex{};
+    std::uint32_t resourceTag{};
+    std::uint32_t selectorCount{};
+
+    bool operator==(const ActorAbilityTarget&) const = default;
+};
+
+/** One authored combat group belongs to an exact objective slot. */
+struct CombatObjectiveGroup final {
+    std::uint32_t slotIndex{};
+    std::uint32_t groupIndex{};
+    std::uint32_t taskCount{};
+
+    bool operator==(const CombatObjectiveGroup&) const = default;
+};
+
+/** A delayed cue expires after this authored window; it is not a playback duration. */
+struct DialogueCue final {
+    std::uint32_t slotIndex{};
+    std::uint32_t cueIndex{};
+    std::uint32_t definitionHash{};
+    float authoredWindowSeconds{};
+
+    bool operator==(const DialogueCue&) const = default;
 };
 
 /** One localized variant belongs to one exact authored type-53 cue definition. */

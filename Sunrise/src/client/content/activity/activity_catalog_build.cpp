@@ -6,6 +6,7 @@
 
 namespace sunrise::client::content::activity {
 namespace packages = middleware::content::packages;
+/** @return True once the first valid installed activity table has been published. */
 bool build_catalog(const packages::reader::Source& source,
                    packages::reader::Scratch& scratch) noexcept {
     namespace catalog = state::build_data::activities;

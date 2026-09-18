@@ -2,6 +2,7 @@
 #include <bit>
 #include <cmath>
 
+#include "combatant_auth.h"
 #include "mission_auth_patch.h"
 #include "scriptable_auth_internal.h"
 
@@ -569,7 +570,11 @@ bool inspect_type2_program(std::span<const std::byte> input,
     };
     std::uint64_t value = 0, present = 0, count = 0;
     Type2ProgramLayout candidate{};
-    if (!optional(31) || !reader.skip(2) || !reader.read(3, value)) {
+    if (!reader.read(1, present) || (present != 0 && !reader.read(31, value))) {
+        return false;
+    }
+    candidate.spawnGeneration = present != 0 ? static_cast<std::uint32_t>(value) : 0;
+    if (!reader.skip(2) || !reader.read(3, value)) {
         return false;
     }
     candidate.bindingWire = static_cast<std::uint8_t>(value);
@@ -577,6 +582,7 @@ bool inspect_type2_program(std::span<const std::byte> input,
         return false;
     }
     candidate.enabled = value != 0;
+    candidate.controlOffset = input.size() * 8U - reader.remaining_bits();
     if (!reader.read(1, present)) {
         return false;
     }
@@ -633,6 +639,84 @@ bool inspect_type2_program(std::span<const std::byte> input,
         return false;
     }
     output = candidate;
+    return true;
+}
+
+/** Splices one validated program over retained actor state without reusing either counter. */
+bool replace_type2_atoms(std::span<const std::byte> previous,
+                         std::size_t previousBits,
+                         std::span<const std::byte> program,
+                         std::size_t programBits,
+                         std::uint32_t committedGeneration,
+                         std::uint32_t committedSpawnGeneration,
+                         bool spawn,
+                         std::span<std::byte> output,
+                         std::size_t& written,
+                         std::size_t& writtenBits,
+                         std::uint32_t& generation,
+                         std::uint32_t& spawnGeneration,
+                         bool retire) noexcept {
+    written = writtenBits = 0;
+    generation = spawnGeneration = 0;
+    Type2ProgramLayout old{}, incoming{};
+    const bool retained = !previous.empty();
+    if ((spawn && retire) || (!retained && ((!spawn && !retire) || previousBits != 0))
+        || (retained && !inspect_type2_program(previous, previousBits, old))
+        || (!spawn && !retire && (!old.enabled || old.bindingWire == 5))
+        || !inspect_type2_program(program, programBits, incoming) || incoming.generation == 0) {
+        return false;
+    }
+    const auto last = (std::max)(committedGeneration, old.generation);
+    const auto lastSpawn = (std::max)(committedSpawnGeneration, old.spawnGeneration);
+    const bool replacesRoot = spawn || retire;
+    if (last >= kMaximumRevision || (replacesRoot && lastSpawn >= kMaximumRevision)) {
+        return false;
+    }
+    const auto next = last + 1U;
+    const auto nextSpawn = replacesRoot ? lastSpawn + 1U : 0U;
+    std::array<std::byte, kType2FullMaximumByteCount> staged{};
+    bits::Writer writer(staged);
+    namespace patch = mission_auth_patch;
+    bool encoded = true;
+    if (replacesRoot) {
+        encoded =
+            combatant_auth::write_root(writer, nextSpawn, !retire)
+            && (retained ? patch::copy_field(
+                               writer,
+                               previous,
+                               {old.controlOffset, old.programOffset - old.controlOffset, true})
+                         : writer.write(0, 2));
+    } else {
+        encoded = patch::copy_field(writer, previous, {0, old.programOffset, true});
+    }
+    // A new program starts at lane zero, independent of the template's progress.
+    constexpr std::size_t kProgramRevisionBits = 1U + auth_fields::kCounterWidth;
+    constexpr std::uint8_t kProgramSeedBits = 6;
+    constexpr std::uint8_t kProgramCountBits = 6;
+    const auto tailOffset = old.programOffset + old.programBits;
+    encoded =
+        encoded && writer.write(1, 1) && writer.write(next, auth_fields::kCounterWidth)
+        && writer.write(0, kProgramSeedBits)
+        && (retire ? writer.write(0, kProgramCountBits)
+                   : patch::copy_field(
+                         writer,
+                         program,
+                         {incoming.programOffset + kProgramRevisionBits + kProgramSeedBits,
+                          incoming.programBits - kProgramRevisionBits - kProgramSeedBits,
+                          true}))
+        && (retained
+                ? patch::copy_field(writer, previous, {tailOffset, previousBits - tailOffset, true})
+                : writer.write(0, 1));
+    const auto bits = writer.bit_count();
+    std::size_t bytes = 0;
+    if (!encoded || !writer.finish(bytes) || bytes > output.size()) {
+        return false;
+    }
+    std::copy_n(staged.begin(), bytes, output.begin());
+    written = bytes;
+    writtenBits = bits;
+    generation = next;
+    spawnGeneration = nextSpawn;
     return true;
 }
 

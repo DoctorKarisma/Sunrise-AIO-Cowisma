@@ -12,6 +12,8 @@ inline constexpr std::uint32_t kRowClass = 0x808076FCU;
 /** One index row: the definition hash, then a self-relative pointer to the record. */
 inline constexpr std::size_t kIndexRowStride = 16;
 inline constexpr std::size_t kIndexRecordField = 8;
+/** Self-relative pointer the route selector needs set before it plays the display row's movie. */
+inline constexpr std::size_t kRecordMovieRouteField = 0x30;
 /** Self-relative pointer to the internal package name, or zero when the row has none. */
 inline constexpr std::size_t kRecordNameField = 0x68;
 /** Activity type, a row of the activity type table. */
@@ -84,10 +86,13 @@ relative(std::span<const std::byte> bytes, std::size_t field, std::size_t& targe
             || !read(bytes, record + kRecordDestinationOffset, row.destination)) {
             return false;
         }
+        std::int64_t movieDelta{};
         std::int64_t nameDelta{};
-        if (!read(bytes, record + kRecordNameField, nameDelta)) {
+        if (!read(bytes, record + kRecordMovieRouteField, movieDelta)
+            || !read(bytes, record + kRecordNameField, nameDelta)) {
             return false;
         }
+        row.movieRoute = movieDelta != 0;
         if (nameDelta != 0) {
             std::size_t name{};
             if (!relative(bytes, record + kRecordNameField, name)) {

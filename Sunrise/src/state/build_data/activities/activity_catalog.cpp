@@ -17,6 +17,7 @@ std::atomic_bool g_artReady{};
 MenuText g_menuText{};
 std::atomic_bool g_menuTextReady{};
 } // namespace
+/** @return True after terminated menu labels are published for the first time. */
 bool publish_menu_text(const MenuText& value) noexcept {
     if (g_menuTextReady.load(std::memory_order_acquire)) {
         return false;
@@ -42,6 +43,7 @@ const MenuText& menu_text() noexcept {
 bool ready() noexcept {
     return g_count.load(std::memory_order_acquire) != 0;
 }
+/** @return True after bounded RGBA images are published for the first time. */
 bool publish_artwork(std::array<Artwork, kIconCount>&& rows) noexcept {
     if (g_artReady.load(std::memory_order_acquire)) {
         return false;
@@ -61,6 +63,7 @@ std::span<const Artwork> artwork() noexcept {
     return g_artReady.load(std::memory_order_acquire) ? std::span<const Artwork>(g_artwork)
                                                       : std::span<const Artwork>{};
 }
+/** @return True after checked presentation rows are published for the first time. */
 bool publish_presentations(std::span<const Presentation> rows) noexcept {
     if (g_presentationCount.load(std::memory_order_acquire) != 0 || rows.empty()
         || rows.size() > kCapacity) {
@@ -86,6 +89,7 @@ bool extraction_failed() noexcept {
 void note_extraction_failure() noexcept {
     g_failed.store(true, std::memory_order_release);
 }
+/** Publishes index-ordered activity rows once without replacing reader storage. */
 bool publish(std::span<const Definition> rows) noexcept {
     // The cooperative investment worker is the sole producer. Never replace published storage.
     if (ready() || rows.empty() || rows.size() > g_rows.size()) {

@@ -50,6 +50,8 @@ inline constexpr std::size_t kDescriptorSenseSchemaOffset = 68;
 inline constexpr std::size_t kDescriptorAuthSchemaOffset = 72;
 /** Type 2 descriptors bind their authored squad through this ClientRef. */
 inline constexpr std::size_t kType2SquadReferenceOffset = 104;
+/** Type 30 descriptors name the volume or object their player monitor measures here. */
+inline constexpr std::size_t kType30MeasuredReferenceOffset = 88;
 
 /** What one slot type resolves to. */
 struct SlotDescriptor {

@@ -145,6 +145,8 @@ struct AuthOverride final {
     /** Internal provenance: this body was compiled and revalidated against the pinned SDK. */
     bool sdkCompiled{};
     bool present{};
+    /** Native output revision that produced these bytes; never serialized. */
+    std::uint64_t originatingHostRevision{};
 };
 
 /** A full squad Sense baseline, including its delta root bit. */

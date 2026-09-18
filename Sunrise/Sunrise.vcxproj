@@ -203,7 +203,6 @@
     <ClCompile Include="src\client\hooks\graphics\discovery\graphics_target_discovery.cpp" />
     <ClCompile Include="src\client\hooks\graphics\graphics_hook_lifecycle.cpp" />
     <ClCompile Include="src\client\hooks\hitch_probe\hitch_probe.cpp" />
-    <ClCompile Include="src\client\hooks\sense_chain_guard\sense_chain_guard.cpp" />
     <ClCompile Include="src\client\hooks\stall_probe\stall_probe.cpp" />
     <ClCompile Include="src\client\hooks\graphics\graphics_hook_replacements.cpp" />
     <ClCompile Include="src\client\hooks\graphics\input\graphics_window_input.cpp" />
@@ -258,48 +257,31 @@
     <ClCompile Include="src\client\hooks\world_objects\world_object_registry.cpp" />
     <ClCompile Include="src\client\hooks\world_objects\world_object_identity_report.cpp" />
     <ClCompile Include="src\client\hooks\world_objects\world_object_purge_policy.cpp" />
-    <ClCompile Include="src\client\hooks\world_objects\world_object_rebind_observer.cpp" />
     <ClCompile Include="src\client\hooking\detour.cpp" />
     <ClCompile Include="src\client\hooking\detour\protected_detour_uninstall.cpp" />
     <ClCompile Include="src\client\hooking\detour\transaction\detour_thread_transaction.cpp" />
     <ClCompile Include="src\client\executable\image.cpp" />
     <ClCompile Include="src\client\memory\current_process_memory.cpp" />
-    <ClCompile Include="src\client\hooks\network\investment\investment_derived_rebuild.cpp" />
-    <ClCompile Include="src\client\hooks\network\investment\investment_refetch.cpp" />
-    <ClCompile Include="src\client\hooks\network\investment\investment_family5_rearm.cpp" />
     <ClCompile Include="src\client\hooks\package_trust\package_trust_bypass.cpp" />
-    <ClCompile Include="src\client\hooks\bitmap\bitmap_hook_lifecycle.cpp" />
     <ClCompile Include="src\client\hooks\feature_flags\feature_flags.cpp" />
-    <ClCompile Include="src\client\hooks\cine_auth_probe\cine_auth_probe.cpp" />
     <ClCompile Include="src\client\hooks\cine_probe\cine_probe.cpp" />
-    <ClCompile Include="src\client\hooks\membership_probe\membership_probe.cpp" />
     <ClCompile Include="src\client\hooks\net_tick_probe\net_tick_probe.cpp" />
-    <ClCompile Include="src\client\hooks\bitmap\bitmap_ref_guard.cpp" />
     <ClCompile Include="src\client\hooks\external_server\external_server_route.cpp" />
     <ClCompile Include="src\client\hooks\external_server\external_server_setopt_guard.cpp" />
     <ClCompile Include="src\client\hooks\bootflow\bootflow_hook_lifecycle.cpp" />
     <ClCompile Include="src\client\hooks\bootflow\bootflow_texture_override.cpp" />
-    <ClCompile Include="src\client\hooks\bootflow\character_select_hold.cpp" />
-    <ClCompile Include="src\client\hooks\bootflow\composition_check.cpp" />
-    <ClCompile Include="src\client\hooks\bootflow\orbit_handoff.cpp" />
-    <ClCompile Include="src\client\hooks\bootflow\owner_activity_slot.cpp" />
-    <ClCompile Include="src\client\hooks\bootflow\orbit_slice_set.cpp" />
-    <ClCompile Include="src\client\hooks\bootflow\region_private.cpp" />
+    <ClCompile Include="src\client\hooks\bootflow\lifetime_gate_probe.cpp" />
     <ClCompile Include="src\client\hooks\bootflow\world_step.cpp" />
     <ClCompile Include="src\client\hooks\bootflow\spawn\slice_set_sample.cpp" />
     <ClCompile Include="src\server\bap\encrypted\push\activity\activity_arrival.cpp" />
     <ClCompile Include="src\middleware\bap\activity_host_manager\request\selection\activity_manager_selection_bits.cpp" />
     <ClCompile Include="src\middleware\bap\activity_host_manager\request\selection\activity_manager_selection_snapshot.cpp" />
-    <ClCompile Include="src\core\settings\state\activity_arrival_override_parser.cpp" />
-    <ClCompile Include="src\client\hooks\queuez\queuez_null_payload_guard.cpp" />
-    <ClCompile Include="src\client\hooks\queuez\queuez_hook_lifecycle.cpp" />
     <ClCompile Include="src\client\content\diagnostics\content_readiness_report.cpp" />
     <ClCompile Include="src\client\hooks\network\bubble_authority\bubble_authority_replacements.cpp" />
     <ClCompile Include="src\client\hooks\network\bubble_authority\scope\bubble_authority_scope.cpp" />
     <ClCompile Include="src\client\hooks\network\http\http_descriptor_route.cpp" />
     <ClCompile Include="src\client\hooks\network\http\http_executor_replacement.cpp" />
     <ClCompile Include="src\client\hooks\network\http\http_worker_completion.cpp" />
-    <ClCompile Include="src\client\hooks\network\signon\signon_readiness_replacements.cpp" />
     <ClCompile Include="src\client\patterns\game\signon\signon_readiness_signature_bytes.cpp" />
     <ClCompile Include="src\client\graphics\wine_compat.cpp" />
     <ClCompile Include="src\core\settings\client\external\client_external_settings_parser.cpp" />
@@ -594,6 +576,7 @@
     <ClCompile Include="src\state\activity\mission\activity_mission_state.cpp" />
     <ClCompile Include="src\state\activity\mission\activity_mission_publication.cpp" />
     <ClCompile Include="src\state\activity\mission\activity_mission_intents.cpp" />
+    <ClCompile Include="src\state\activity\mission\activity_mission_population.cpp" />
     <ClCompile Include="src\state\activity\membership\activity_membership_query.cpp" />
     <ClCompile Include="src\state\unlocks\unlocks_runtime.cpp" />
     <ClCompile Include="src\state\unlocks\unlocks_records.cpp" />
@@ -601,6 +584,7 @@
     <ClCompile Include="src\state\entitlements\entitlement_validation.cpp" />
     <ClCompile Include="src\state\activity\defaults\activity_defaults_snapshot.cpp" />
     <ClCompile Include="src\state\activity\defaults\activity_defaults_validation.cpp" />
+    <ClCompile Include="src\state\activity\destination\activity_destination_public.cpp" />
     <ClCompile Include="src\state\activity\destination\activity_destination_snapshot.cpp" />
     <ClCompile Include="src\state\activity\destination\activity_destination_spawn_binding.cpp" />
     <ClCompile Include="src\state\activity\destination\activity_destination_validation.cpp" />
@@ -749,6 +733,7 @@
     <ClCompile Include="src\client\content\activity\activity_sdk_ir_family_coverage.cpp" />
     <ClCompile Include="src\client\content\activity\activity_sdk_native_pack_pipeline.cpp" />
     <ClCompile Include="src\client\content\activity\activity_sdk_dialogue_group_index.cpp" />
+    <ClCompile Include="src\client\content\activity\activity_sdk_actor_ability_inventory.cpp" />
     <ClCompile Include="src\client\content\activity\activity_sdk_pack_composer.cpp" />
     <ClCompile Include="src\client\content\activity\activity_sdk_pack_composer_rows.cpp" />
     <ClCompile Include="src\client\content\activity\activity_sdk_pack_composer_validate.cpp" />
@@ -768,6 +753,11 @@
     <ClCompile Include="src\client\content\activity\activity_sdk_generation_report.cpp" />
     <ClCompile Include="src\client\content\activity\activity_sdk_generation_inventory.cpp" />
     <ClCompile Include="src\client\content\activity\activity_sdk_external_placements.cpp" />
+    <ClCompile Include="src\client\content\activity\activity_sdk_decode_plans.cpp" />
+    <ClCompile Include="src\client\content\activity\activity_sdk_decode_plans_compiler.cpp" />
+    <ClCompile Include="src\client\content\activity\activity_sdk_decode_plans_image.cpp" />
+    <ClCompile Include="src\client\content\activity\activity_sdk_decode_plans_index.cpp" />
+    <ClCompile Include="src\client\content\activity\activity_sdk_decode_plans_metadata.cpp" />
     <ClCompile Include="src\client\content\activity\activity_sdk_generation_publish.cpp" />
     <ClCompile Include="src\client\content\activity\activity_sdk_generation_shard.cpp" />
     <ClCompile Include="src\client\content\activity\activity_sdk_shard_cleanup.cpp" />
@@ -811,10 +801,13 @@
     <ClCompile Include="src\server\activity\activity_sdk_lifetime_runtime.cpp" />
     <ClCompile Include="src\server\activity\activity_sdk_squad_runtime.cpp" />
     <ClCompile Include="src\server\activity\activity_sdk_mission_runtime.cpp" />
+    <ClCompile Include="src\server\activity\activity_sdk_scene_cast.cpp" />
+    <ClCompile Include="src\server\activity\activity_sdk_scene_spawn.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_arena.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_lua_sandbox.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_lua_collection_api.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_lua_context_api.cpp" />
+    <ClCompile Include="src\server\activity\mission\mission_script_lua_population_api.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_lua_squad_api.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_lua_scene_api.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_lua_lifetime_api.cpp" />
@@ -827,6 +820,9 @@
     <ClCompile Include="src\server\activity\mission\mission_script_lua_message_api.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_lua_peer_api.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_lua_slot_api.cpp" />
+    <ClCompile Include="src\server\activity\mission\mission_script_lua_presentation_api.cpp" />
+    <ClCompile Include="src\server\activity\mission\mission_script_lua_actor_api.cpp" />
+    <ClCompile Include="src\server\activity\mission\mission_script_lua_device_api.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_lua_actor_sequence_api.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_lua_value_api.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_lua_enum_api.cpp" />
@@ -841,13 +837,20 @@
     <ClCompile Include="src\server\activity\mission\mission_script_message_catalog.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_runtime.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_runtime_edges.cpp" />
+    <ClCompile Include="src\server\activity\mission\mission_script_runtime_incidents.cpp" />
+    <ClCompile Include="src\server\activity\mission\mission_script_runtime_roster.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_runtime_combatant_damage.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_runtime_device.cpp" />
+    <ClCompile Include="src\server\activity\mission\mission_script_runtime_population.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_cinematic.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_player_trigger.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_runtime_delivery.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_runtime_dispatch.cpp" />
+    <ClCompile Include="src\server\activity\mission\mission_script_runtime_region.cpp" />
+    <ClCompile Include="src\server\activity\mission\mission_script_actor_command_policy.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_sdk_bridge.cpp" />
+    <ClCompile Include="src\server\activity\mission\mission_script_slot_index.cpp" />
+    <ClCompile Include="src\server\activity\mission\mission_script_activity_binding_sdk.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_actor_sequence_bridge.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_catalog_sdk_bridge.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_manifest_sdk_bridge.cpp" />
@@ -856,6 +859,9 @@
     <ClCompile Include="src\server\activity\mission\mission_script_world_sdk_values.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_vm.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_lua_slot_atoms.cpp" />
+    <ClCompile Include="src\server\activity\mission\mission_script_lua_combat_objective.cpp" />
+    <ClCompile Include="src\server\activity\activity_sdk_combat_objective.cpp" />
+    <ClCompile Include="src\server\activity\activity_sdk_actor_program.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_runtime_attach.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_runtime_diagnostics.cpp" />
     <ClCompile Include="src\server\activity\mission\mission_script_runtime_feed.cpp" />
@@ -937,7 +943,10 @@
     <ClCompile Include="src\server\bap\encrypted\push\queuez\queuez_select_character.cpp" />
     <ClCompile Include="src\server\bap\encrypted\push\activity\activity_message_push.cpp" />
     <ClCompile Include="src\server\bap\encrypted\push\activity\activity_roster_push.cpp" />
+    <ClCompile Include="src\server\bap\encrypted\push\activity\activity_roster_push_records.cpp" />
+    <ClCompile Include="src\server\bap\encrypted\push\activity\activity_roster_device_publication.cpp" />
     <ClCompile Include="src\server\bap\encrypted\push\activity\activity_roster_snapshot.cpp" />
+    <ClCompile Include="src\server\bap\encrypted\push\activity\activity_roster_regions.cpp" />
     <ClCompile Include="src\server\bap\encrypted\push\activity\activity_mission_seed_roster.cpp" />
     <ClCompile Include="src\server\bap\encrypted\push\activity\activity_roster_report.cpp" />
     <ClCompile Include="src\server\bap\encrypted\push\activity\activity_keepalive_seed.cpp" />
@@ -951,6 +960,7 @@
     <ClCompile Include="src\server\bap\activity_authority_query_owner.cpp" />
     <ClCompile Include="src\server\bap\encrypted\push\activity\activity_authority_reset_push.cpp" />
     <ClCompile Include="src\server\bap\encrypted\push\activity\activity_roster_groups.cpp" />
+    <ClCompile Include="src\server\bap\encrypted\push\activity\activity_roster_group_order.cpp" />
     <ClCompile Include="src\server\bap\activity_authority_reset_owner.cpp" />
     <ClCompile Include="src\server\bap\encrypted\push\snapshot\snapshot_object_compressor.cpp" />
     <ClCompile Include="src\server\bap\encrypted\push\snapshot\family4_selection_resolver.cpp" />
@@ -1347,14 +1357,12 @@
     <ClInclude Include="src\client\hooks\teleport\internal.h" />
     <ClInclude Include="src\client\hooks\teleport\runtime.h" />
     <ClInclude Include="src\client\hooks\world_objects\world_object_registry.h" />
-    <ClInclude Include="src\client\hooks\world_objects\world_object_rebind_trace.h" />
     <ClInclude Include="src\client\hooks\world_objects\internal.h" />
     <ClInclude Include="src\client\ui\movement\movement_panel.h" />
     <ClInclude Include="src\client\runtime\internal.h" />
     <ClInclude Include="src\client\runtime\host\game_host_classification.h" />
     <ClInclude Include="src\client\hooks\graphics\graphics_hook_lifecycle.h" />
     <ClInclude Include="src\client\hooks\hitch_probe\hitch_probe.h" />
-    <ClInclude Include="src\client\hooks\sense_chain_guard\sense_chain_guard.h" />
     <ClInclude Include="src\client\hooks\stall_probe\stall_probe.h" />
     <ClInclude Include="src\client\hooks\graphics\graphics_hook_replacements.h" />
     <ClInclude Include="src\client\hooks\graphics\input\input.h" />
@@ -1383,7 +1391,7 @@
     <ClInclude Include="src\client\hooking\detour.h" />
     <ClInclude Include="src\client\hooking\detour\transaction\detour_thread_transaction.h" />
     <ClInclude Include="src\client\executable\image.h" />
-    <ClInclude Include="src\client\hooks\network\investment\investment_derived_rebuild.h" />
+    <ClInclude Include="src\client\hooks\network\investment\investment_patches.h" />
     <ClInclude Include="src\client\hooks\network\runtime.h" />
     <ClInclude Include="src\client\hooks\network\bubble_authority\bubble_authority_replacements.h" />
     <ClInclude Include="src\client\hooks\network\bubble_authority\scope\bubble_authority_scope.h" />
@@ -1449,6 +1457,7 @@
     <ClInclude Include="src\state\activity\destination\definition.h" />
     <ClInclude Include="src\state\activity\forced\definition.h" />
     <ClInclude Include="src\state\activity\forced\activity_forced_destination.h" />
+    <ClInclude Include="src\state\activity\destination\activity_destination_public.h" />
     <ClInclude Include="src\state\activity\destination\activity_destination_snapshot.h" />
     <ClInclude Include="src\state\activity\destination\activity_destination_validation.h" />
     <ClInclude Include="src\state\activity\destination\activity_destination_spawn_binding.h" />
@@ -1571,6 +1580,7 @@
     <ClInclude Include="src\server\activity\mission\mission_script_runtime.h" />
     <ClInclude Include="src\server\activity\mission\mission_script_runtime_internal.h" />
     <ClInclude Include="src\server\activity\mission\mission_script_sdk_bridge.h" />
+    <ClInclude Include="src\server\activity\mission\mission_script_slot_index.h" />
     <ClInclude Include="src\server\activity\mission\mission_script_vm.h" />
     <ClInclude Include="src\server\activity\mission\mission_script_catalog_sdk.h" />
     <ClInclude Include="src\server\activity\mission\mission_script_catalog_sdk_bridge.h" />
@@ -1654,6 +1664,7 @@
     <ClInclude Include="src\server\bap\encrypted\push\queuez\queuez_update_frame.h" />
     <ClInclude Include="src\server\bap\encrypted\push\activity\activity_message_push.h" />
     <ClInclude Include="src\server\bap\encrypted\push\activity\activity_roster_push.h" />
+    <ClInclude Include="src\server\bap\encrypted\push\activity\activity_roster_device_publication.h" />
     <ClInclude Include="src\server\bap\encrypted\push\activity\activity_mission_seed_roster.h" />
     <ClInclude Include="src\server\bap\encrypted\push\activity\activity_global_state_push.h" />
     <ClInclude Include="src\server\bap\encrypted\push\activity\activity_world_globals_push.h" />
@@ -1834,12 +1845,8 @@
     <ClInclude Include="src\client\content\items\packages\internal.h" />
     <ClInclude Include="src\client\hooks\assert_handler\assert_handler_observer.h" />
     <ClInclude Include="src\client\hooks\assert_handler\assert_handler_lifecycle.h" />
-    <ClInclude Include="src\client\hooks\bitmap\bitmap_ref_guard.h" />
-    <ClInclude Include="src\client\hooks\bitmap\bitmap_hook_lifecycle.h" />
     <ClInclude Include="src\client\hooks\feature_flags\feature_flags.h" />
-    <ClInclude Include="src\client\hooks\cine_auth_probe\cine_auth_probe.h" />
     <ClInclude Include="src\client\hooks\cine_probe\cine_probe.h" />
-    <ClInclude Include="src\client\hooks\membership_probe\membership_probe.h" />
     <ClInclude Include="src\client\hooks\net_tick_probe\net_tick_probe.h" />
     <ClInclude Include="src\client\hooks\bootflow\internal.h" />
     <ClInclude Include="src\client\hooks\bootflow\bootflow_hook_lifecycle.h" />
@@ -1850,8 +1857,6 @@
     <ClInclude Include="src\client\hooks\egress\lifecycle\internal.h" />
     <ClInclude Include="src\client\hooks\egress\policy\egress_policy_logging.h" />
     <ClInclude Include="src\client\hooks\network\investment\internal.h" />
-    <ClInclude Include="src\client\hooks\queuez\internal.h" />
-    <ClInclude Include="src\client\hooks\queuez\queuez_hook_lifecycle.h" />
     <ClInclude Include="src\client\hooks\package_trust\package_trust_bypass.h" />
     <ClInclude Include="src\client\patterns\game\assert_handler\assert_signature_bytes.h" />
     <ClInclude Include="src\client\patterns\game\config_getter\config_getter_signature_bytes.h" />
@@ -1918,6 +1923,7 @@
     <ClInclude Include="src\client\content\activity\activity_sdk_ir_family_coverage.h" />
     <ClInclude Include="src\client\content\activity\activity_sdk_native_pack_pipeline.h" />
     <ClInclude Include="src\client\content\activity\activity_sdk_dialogue_group_index.h" />
+    <ClInclude Include="src\client\content\activity\activity_sdk_actor_ability_inventory.h" />
     <ClInclude Include="src\client\content\activity\activity_sdk_pack_composer.h" />
     <ClInclude Include="src\client\content\activity\activity_sdk_pack_composer_internal.h" />
     <ClInclude Include="src\client\content\activity\activity_sdk_policy_input_adapter.h" />
@@ -1935,6 +1941,8 @@
     <ClInclude Include="src\client\content\activity\activity_sdk_generation_report.h" />
     <ClInclude Include="src\client\content\activity\activity_sdk_shard_cleanup.h" />
     <ClInclude Include="src\client\content\activity\activity_sdk_generation_worker.h" />
+    <ClInclude Include="src\client\content\activity\activity_sdk_decode_plans.h" />
+    <ClInclude Include="src\client\content\activity\activity_sdk_decode_plans_internal.h" />
     <ClInclude Include="src\client\content\activity\activity_sdk_generation_worker_internal.h" />
     <ClInclude Include="src\client\content\activity\activity_sdk_estate_validation.h" />
     <ClInclude Include="src\client\content\activity\activity_sdk_live_publication.h" />
@@ -2085,6 +2093,7 @@
     <ClInclude Include="src\middleware\bap\activity_message\damage_monitor_auth.h" />
     <ClInclude Include="src\middleware\bap\activity_message\darkness_zone_auth.h" />
     <ClInclude Include="src\middleware\bap\activity_message\ghost_link_auth.h" />
+    <ClInclude Include="src\middleware\bap\activity_message\ghost_link_sense.h" />
     <ClInclude Include="src\middleware\bap\activity_message\interactable_object_auth.h" />
     <ClInclude Include="src\middleware\bap\activity_message\mission_auth_patch.h" />
     <ClInclude Include="src\middleware\bap\activity_message\mission_effect_auth.h" />
@@ -2097,6 +2106,7 @@
     <ClInclude Include="src\middleware\gameplay\external\entity_identity_metadata.h" />
     <ClInclude Include="src\server\activity\mission\mission_script_actor_path_sense.h" />
     <ClInclude Include="src\server\activity\mission\mission_script_event_batch.h" />
+    <ClInclude Include="src\server\activity\mission\mission_script_region.h" />
     <ClInclude Include="src\server\activity\mission\mission_script_ghost_sense.h" />
     <ClInclude Include="src\server\activity\mission\mission_script_object_sense.h" />
     <ClInclude Include="src\server\activity\mission\mission_script_player_sense.h" />
@@ -2118,6 +2128,7 @@
   <ItemGroup>
     <ClCompile Include="src\middleware\bap\activity_message\squad_sense_state.cpp" />
     <ClCompile Include="src\middleware\bap\activity_message\activity_scriptable_auth_mission_body_codec.cpp" />
+    <ClCompile Include="src\middleware\bap\activity_message\activity_scriptable_auth_dialogue_codec.cpp" />
     <ClInclude Include="src\middleware\bap\activity_message\squad_sense_state.h" />
   </ItemGroup>
   <ItemGroup>
@@ -2151,6 +2162,7 @@
     <ClInclude Include="src\server\gameplay\entity_position_profile_provider.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\client\hooks\network\investment\investment_refetch.cpp" />
     <ClCompile Include="src\client\hooks\network\investment\investment_socket_menu_routing.cpp" />
     <ClInclude Include="src\client\hooks\network\investment\socket_row_relocation.h" />
     <ClInclude Include="src\middleware\content\packages\tables\unlock_expression.h" />
@@ -2217,6 +2229,21 @@
     <ClInclude Include="src\state\build_data\activities\activity_releases.h" />
     <ClInclude Include="src\middleware\content\packages\tables\activity_table.h" />
     <ClInclude Include="src\middleware\content\packages\tables\activity_presentation_table.h" />
+    <ClInclude Include="src\middleware\bap\activity_message\map_generator_auth.h" />
+    <ClInclude Include="src\middleware\bap\activity_message\squad_objective_state.h" />
+    <ClInclude Include="src\middleware\content\packages\tables\quest_initialization_reader.h" />
+    <ClInclude Include="src\server\activity\activity_sdk_actor_sequences.h" />
+    <ClInclude Include="src\server\activity\activity_sdk_scene_dependencies.h" />
+    <ClInclude Include="src\server\activity\activity_sdk_scene_spawn.h" />
+    <ClInclude Include="src\server\activity\host_runtime_actor_program.h" />
+    <ClInclude Include="src\server\activity\host_runtime_counter_auth.h" />
+    <ClInclude Include="src\server\activity\host_runtime_ghost_link.h" />
+    <ClInclude Include="src\server\activity\mission\mission_script_actor_ability_sdk.h" />
+    <ClInclude Include="src\server\activity\mission\mission_script_actor_sequence_bridge.h" />
+    <ClInclude Include="src\server\activity\mission\mission_script_combat_objective_sdk.h" />
+    <ClInclude Include="src\server\activity\mission\mission_script_runtime_objective.h" />
+    <ClInclude Include="src\server\ui\activity_host\activity_host_sdk_actor_sequences.h" />
+    <ClInclude Include="src\state\build_data\items\quest_initialization.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

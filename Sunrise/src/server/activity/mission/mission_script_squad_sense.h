@@ -9,15 +9,15 @@
 
 namespace sunrise::server::activity::mission {
 
-/** Type-1 squad Sense nested schemas: the consumed-request list, its counts, and the cost reals. */
-inline constexpr std::uint32_t kSquadConsumedListSchema = 0x80807ECFU;
-inline constexpr std::uint32_t kSquadConsumedCountSchema = 0x80809491U;
+/** Type-1 squad Sense nested schemas: the created-count list, its counts, and the cost reals. */
+inline constexpr std::uint32_t kSquadCreatedListSchema = 0x80807ECFU;
+inline constexpr std::uint32_t kSquadCreatedCountSchema = 0x80809491U;
 inline constexpr std::uint32_t kSquadObjectiveCostSchema = 0x80807ECDU;
 /** Root ordinals: field 1 echoes the objective revision, field 3 is the alive count. */
 inline constexpr std::uint16_t kSquadObjectiveRevisionOrdinal = 1;
 inline constexpr std::uint16_t kSquadAliveOrdinal = 3;
-/** The consumed list has at most eight slots. */
-inline constexpr std::size_t kSquadConsumedSlotCapacity = 8;
+/** The created-count list has at most eight slots. */
+inline constexpr std::size_t kSquadCreatedSlotCapacity = 8;
 /** One cost per authored objective task group. */
 inline constexpr std::size_t kSquadObjectiveGroupCount = 24;
 /** Costs are saturated distances; the client never publishes more than this. */
@@ -30,27 +30,27 @@ inline constexpr std::int64_t kMaximumAliveCount = 63;
 inline constexpr std::int64_t kMaximumCounter = 0x7FFFFFFF;
 
 /**
- * Reads the consumed-request list. Deaths and failed placements advance these counts, so a rise
- * is not a spawn.
+ * Reads the per-slot created counts. They never decrement and are zeroed on a generation change,
+ * so a rise is a spawn.
  * @param output Receives one count per slot; slots past the list length read zero.
  * @return The list length, or zero when the list is absent or incomplete.
  */
-[[nodiscard]] inline std::uint8_t read_squad_consumed_counts(
+[[nodiscard]] inline std::uint8_t read_squad_created_counts(
     std::span<const middleware::bap::activity_message::sense_update::DecodedValue> values,
     std::span<std::int32_t> output) noexcept {
     std::uint32_t length = 0;
     std::uint32_t known = 0;
-    std::array<std::int32_t, kSquadConsumedSlotCapacity> counts{};
+    std::array<std::int32_t, kSquadCreatedSlotCapacity> counts{};
     for (const auto& value : values) {
         if (!value.present) {
             continue;
         }
-        if (value.schemaRow == kSquadConsumedListSchema && value.fieldOrdinal == 0) {
+        if (value.schemaRow == kSquadCreatedListSchema && value.fieldOrdinal == 0) {
             if (value.unsignedValue > counts.size()) {
                 return 0;
             }
             length = static_cast<std::uint32_t>(value.unsignedValue);
-        } else if (value.schemaRow == kSquadConsumedCountSchema && value.fieldOrdinal == 0
+        } else if (value.schemaRow == kSquadCreatedCountSchema && value.fieldOrdinal == 0
                    && value.occurrence < counts.size()) {
             if (value.signedValue < 0 || value.signedValue > kMaximumCounter) {
                 return 0;

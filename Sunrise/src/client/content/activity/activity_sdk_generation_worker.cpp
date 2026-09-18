@@ -258,6 +258,7 @@ DWORD WINAPI thread_main(void* opaque) noexcept {
         bool layoutsReady = state::build_data::scenario_layouts_ready();
         if (work->offline && !layoutsReady) {
             auto scratch = std::make_unique<package_reader::Scratch>();
+            // Offline layout extraction has a finite work limit.
             constexpr std::size_t kMaximumLayoutSteps = 10'000;
             for (std::size_t step = 0; step < kMaximumLayoutSteps && !cancelled() && !layoutsReady;
                  ++step) {
@@ -502,6 +503,7 @@ OfflineBuildStatus build_offline(const OfflineBuildRequest& request,
         work->scenarioDirectory = outputRoot + std::wstring(kScenarioDirectorySuffix);
         work->catalogPath = outputRoot + std::wstring(kCatalogFileSuffix);
         work->packPath = outputRoot + std::wstring(kPackFileSuffix);
+        work->executablePath.assign(request.executablePath);
         if (!cacheRoot.empty()) {
             work->cacheScenarioDirectory = cacheRoot + std::wstring(kScenarioDirectorySuffix);
             work->cacheCatalogPath = cacheRoot + std::wstring(kCatalogFileSuffix);
@@ -671,6 +673,14 @@ void service() noexcept {
         work->scenarioDirectory = g_scenarioDirectory;
         work->catalogPath = g_catalogPath;
         work->packPath = g_packPath;
+        // The live pass compiles the decoder cache against the running client executable.
+        core::path::Buffer executable;
+        const DWORD copied = GetModuleFileNameW(
+            nullptr, executable.chars.data(), static_cast<DWORD>(executable.chars.size()));
+        if (copied != 0 && copied < executable.chars.size()) {
+            work->executablePath.assign(executable.chars.data(), copied);
+        }
+        work->executableModule = GetModuleHandleW(nullptr);
     } catch (...) {
         delete work;
         g_enabled = false;

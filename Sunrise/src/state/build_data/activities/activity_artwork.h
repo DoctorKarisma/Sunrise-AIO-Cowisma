@@ -8,6 +8,7 @@
 namespace sunrise::state::build_data::activities {
 /** Numeric slots into the extracted artwork table; zero has no image. */
 enum class Icon : std::uint8_t {};
+// The artwork table reserves these fixed icon slots.
 inline constexpr std::size_t kIconCount = 41;
 struct Artwork {
     std::uint32_t tag{};

@@ -605,6 +605,11 @@ bool read_velocity(void* component, Vector& velocity) noexcept {
     return body != nullptr && read_at(body + kBodyVelocityX, velocity);
 }
 
+/** Finds the rigid body a physics component drives. */
+void* body(void* component) noexcept {
+    return component != nullptr ? body_of(static_cast<std::byte*>(component)) : nullptr;
+}
+
 /** Writes the linear velocity of the body a physics component drives. */
 bool write_velocity(void* component, const Vector& velocity) noexcept {
 

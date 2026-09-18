@@ -12,6 +12,8 @@ inline constexpr std::size_t kDisplayRecordField = 8;
 /** The display record starts with a self-relative pointer to its text block. */
 inline constexpr std::size_t kDisplayTextField = 0;
 inline constexpr std::size_t kDisplayCategoryOffset = 8;
+/** Package name hash of the row's pre-rendered movie; the empty-string hash names none. */
+inline constexpr std::size_t kDisplayMovieOffset = 0x40;
 /** String references inside the text block, and the Director style tag after them. */
 inline constexpr std::size_t kTextTitleOffset = 4;
 inline constexpr std::size_t kTextDescriptionOffset = 12;
@@ -52,6 +54,7 @@ struct DisplayRefs {
     StringRef title{}, description{}, type{}, expansion{};
     std::uint16_t category{kNoCategory};
     std::uint32_t style{kNoPlugSource};
+    std::uint32_t movie{state::build_data::activities::kNoMovie};
 };
 /**
  * Reads the string references of every activity's display row.
@@ -88,7 +91,8 @@ display_refs(std::span<const std::byte> display,
             || !read(display, text + kTextDescriptionOffset, output[i].description)
             || !read(display, text + kTextExpansionOffset, output[i].expansion)
             || !read(display, record + kDisplayCategoryOffset, output[i].category)
-            || !read(display, text + kTextStyleOffset, output[i].style)) {
+            || !read(display, text + kTextStyleOffset, output[i].style)
+            || !read(display, record + kDisplayMovieOffset, output[i].movie)) {
             return false;
         }
         if (rows[i].nativeType < t.count

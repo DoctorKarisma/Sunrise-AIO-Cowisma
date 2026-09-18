@@ -393,16 +393,6 @@ struct ArtifactResetResult {
     std::size_t instanceCount{};
 };
 
-/** Prepared current-activity change for the selected character, private until it publishes. */
-struct PendingCurrentActivity {
-    CharacterState beforeCharacter{};
-    CharacterState afterCharacter{};
-    std::uint64_t characterSoid{};
-    std::size_t characterIndex{};
-    std::uint16_t activityIndex{};
-    bool prepared{};
-};
-
 /** Result of validating one sparse settings writeback against authoritative State. */
 enum class SettingsUpdateDisposition : std::uint8_t {
     rejected,
@@ -481,10 +471,9 @@ void publish_sign_in_time(std::uint64_t seconds) noexcept;
  * The Client names its pick only in the select-character request, so this is where a player's
  * choice enters State.
  * @param characterSoid Picked character key, which must name an authored character.
- * @param changed Receives whether the selection moved to a different character.
  * @return False when no authored character carries that key.
  */
-[[nodiscard]] bool set_selected_character(std::uint64_t characterSoid, bool& changed) noexcept;
+[[nodiscard]] bool set_selected_character(std::uint64_t characterSoid) noexcept;
 
 /**
  * Stores the selected character's equipped title row. The caller proves the record is a claimed
@@ -737,18 +726,6 @@ commit_profile_item_acquisition(PendingProfileItemAcquisition& mutation) noexcep
 
 /** Commits one prepared item-state change behind an exact full-character staleness guard. */
 [[nodiscard]] bool commit_item_state(PendingItemState& mutation) noexcept;
-
-/**
- * Prepares the selected character's current activity, family-4 `+45896`, without changing State.
- * @param activityIndex Activity the character is launching into.
- * @param mutation Gets the checked after-image.
- * @return True when a character is selected and the value changes.
- */
-[[nodiscard]] bool prepare_current_activity(std::uint16_t activityIndex,
-                                            PendingCurrentActivity& mutation) noexcept;
-
-/** Commits one prepared current-activity change behind an exact character staleness guard. */
-[[nodiscard]] bool commit_current_activity(PendingCurrentActivity& mutation) noexcept;
 
 /**
  * Merges and validates a sparse WS-701 settings update without publishing it.

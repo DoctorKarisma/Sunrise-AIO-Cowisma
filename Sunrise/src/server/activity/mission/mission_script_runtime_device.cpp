@@ -65,17 +65,49 @@ void push_device_edges(RuntimeInstance& instance,
         bool reset = false;
         const auto body =
             std::span(sense.values).subspan(observation.firstValue, observation.valueCount);
-        if (!update_device_level(row->level, body, observation.key.schemaRow, reset)) {
+        DeviceLevel incoming{};
+        bool ignoredReset = false;
+        if (!update_device_level(incoming, body, observation.key.schemaRow, ignoredReset)) {
             continue;
         }
+        const bool changed =
+            update_device_level(row->level, body, observation.key.schemaRow, reset);
         row->used = true;
+        mission_state::DeviceReport report{};
+        report.attemptGeneration = instance.dispatchAttemptGeneration;
+        report.sourceGeneration = sense.sourceGeneration;
+        report.inputSequence = instance.dispatchInputSequence;
+        report.clientMessageSequence = observation.clientMessageSequence;
+        report.objectTag = observation.key.objectTag;
+        report.registryKey = observation.key.registryKey;
+        report.slotIndex = observation.key.slotIndex;
+        for (std::size_t channel = 0; channel < incoming.channels.size(); ++channel) {
+            const auto& value = incoming.channels[channel];
+            report.channels[channel] = {
+                value.value, value.sequence, value.valueKnown, value.sequenceKnown};
+        }
+        mission_state::Snapshot snapshot{};
+        std::array<std::uint64_t, mission_state::kDeviceChannelCount> applied{};
+        const auto status = mission_state::observe_device_report(
+            instance.view.binding, instance.programKey, report, applied, snapshot);
+        if (status != mission_state::Status::ready) {
+            fault_instance(instance, "accepted device report could not join its native request");
+            return;
+        }
+        accept_mission_state(instance, snapshot);
+        if (!changed
+            && std::all_of(applied.begin(), applied.end(), [](auto key) { return key == 0; })) {
+            continue;
+        }
         host::Event event{};
+        event.attemptGeneration = report.attemptGeneration;
+        event.deviceAppliedRequests = applied;
         event.kind = host::EventKind::deviceState;
         event.binding = instance.view.binding;
         event.sequence = observation.sequence;
         event.tick = observation.tick;
         event.sourceGeneration = instance.view.activityClientGeneration;
-        event.missionSequence = instance.lastMissionSequence;
+        event.missionSequence = report.inputSequence;
         event.firstRegistryKey = observation.key.registryKey;
         event.firstSlotIndex = observation.key.slotIndex;
         event.firstSlotType = observation.key.slotType;

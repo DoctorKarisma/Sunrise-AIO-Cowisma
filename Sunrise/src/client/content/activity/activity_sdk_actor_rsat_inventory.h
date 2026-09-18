@@ -233,6 +233,8 @@ struct Snapshot final {
     std::vector<state::activity_sdk::format::ActorSequenceTable> sequenceTables{};
     std::vector<SequenceEntry> sequenceEntries{};
     std::vector<state::activity_sdk::format::ActorSequenceBinding> sequenceBindings{};
+    std::vector<state::activity_sdk::format::ActorAbility> actorAbilities{};
+    std::vector<state::activity_sdk::format::ActorAbilityTarget> actorAbilityTargets{};
     bool complete{};
 };
 

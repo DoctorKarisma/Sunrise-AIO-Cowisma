@@ -23,6 +23,7 @@ std::array<bool, state::build_data::activities::kCapacity> g_available{};
 std::size_t g_layoutRevision{}, g_catalogRevision{};
 std::array<std::uint16_t, state::build_data::activities::kCapacity> g_representatives{},
     g_variantCounts{};
+/** Counts visible variants and selects the highest-scoring representative for each experience. */
 void rebuild_experiences(std::span<const Activity> rows) noexcept {
     g_representatives.fill(0xFFFF);
     g_variantCounts.fill(0);
@@ -40,6 +41,7 @@ void rebuild_experiences(std::span<const Activity> rows) noexcept {
         }
     }
 }
+/** Returns one representative per experience matching the current library filters. */
 std::size_t visible_experiences(std::span<const Activity> rows,
                                 std::span<std::uint16_t> output) noexcept {
     std::array<bool, state::build_data::activities::kCapacity> found{};
@@ -73,6 +75,7 @@ void reset_library() noexcept {
     g_type.fill(0);
     navigate(0);
 }
+/** Draws navigation back to the current content group or the complete library. */
 void breadcrumbs() noexcept {
     if (ImGui::Button("Content library")) {
         reset_library();
@@ -101,6 +104,7 @@ void breadcrumbs() noexcept {
         ImGui::TextDisabled("Launch details");
     }
 }
+/** Submits valid launch requests and displays the active override state. */
 void launch_controls(std::uint16_t index, bool manualMode) noexcept {
     namespace launch = client::activity::mission_launch;
     const auto rows = state::build_data::activities::entries();
@@ -150,6 +154,7 @@ void launch_controls(std::uint16_t index, bool manualMode) noexcept {
         ImGui::EndDisabled();
     }
 }
+/** Edits a manual destination and submits it through the shared launch controls. */
 void show_custom() noexcept {
     if (ImGui::Button("< Back to library")) {
         reset_library();
@@ -166,6 +171,7 @@ void show_custom() noexcept {
     ImGui::Spacing();
     launch_controls(manual::g_transport, true);
 }
+/** Shows one variant and keeps launch controls bound to that selection. */
 void show_detail(const Activity& row) noexcept {
     const auto rows = state::build_data::activities::entries();
     const auto id = experience_id(row);
@@ -271,8 +277,8 @@ void show_detail(const Activity& row) noexcept {
     }
 }
 } // namespace
+/** Refreshes catalog availability before rendering the library or launch details. */
 void draw() noexcept {
-    const detail::Style style{};
     namespace catalog = state::build_data::activities;
     const auto rows = catalog::entries();
     const auto revision = state::build_data::scenario_layout_count();
@@ -281,7 +287,8 @@ void draw() noexcept {
         for (const auto& row : rows) {
             state::build_data::scenarios::Definition layout{};
             g_available[row.index] =
-                !row.name().empty() && state::build_data::find_scenario_layout(row.name(), layout);
+                (!row.name().empty() && state::build_data::find_scenario_layout(row.name(), layout))
+                || catalog::plays_movie(row);
         }
         rebuild_experiences(rows);
         g_layoutRevision = revision;
@@ -331,6 +338,7 @@ void draw() noexcept {
             ImGui::TextWrapped("Activities are grouped by their first release. Equivalent launch "
                                "variants share one card; different activity types stay separate.");
             ImGui::Spacing();
+            // The launcher exposes these four content filters.
             constexpr std::array<const char*, 4> kinds{
                 "All content", "Expansions", "Seasons", "Events"};
             const auto kindColumns = static_cast<unsigned>(

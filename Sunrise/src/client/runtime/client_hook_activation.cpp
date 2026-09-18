@@ -17,9 +17,7 @@
 #include "../executable/image.h"
 #include "../hooks/assert_handler/assert_handler_lifecycle.h"
 #include "../hooks/async_io/async_io_lifetime_guard.h"
-#include "../hooks/bitmap/bitmap_hook_lifecycle.h"
 #include "../hooks/bootflow/bootflow_hook_lifecycle.h"
-#include "../hooks/cine_auth_probe/cine_auth_probe.h"
 #include "../hooks/cine_probe/cine_probe.h"
 #include "../hooks/config_getter/config_getter_lifecycle.h"
 #include "../hooks/cursor/runtime.h"
@@ -28,17 +26,13 @@
 #include "../hooks/hitch_probe/hitch_probe.h"
 #include "../hooks/inactivity/inactivity_override.h"
 #include "../hooks/infinite_ammo/infinite_ammo.h"
-#include "../hooks/membership_probe/membership_probe.h"
-#include "../hooks/network/investment/investment_derived_rebuild.h"
 #include "../hooks/network/investment/investment_refetch.h"
 #include "../hooks/network/runtime.h"
 #include "../hooks/no_turnback/no_turnback.h"
 #include "../hooks/noclip/runtime.h"
 #include "../hooks/package_trust/package_trust_bypass.h"
 #include "../hooks/polled_input/runtime.h"
-#include "../hooks/queuez/queuez_hook_lifecycle.h"
 #include "../hooks/retail_log/retail_log_lifecycle.h"
-#include "../hooks/sense_chain_guard/sense_chain_guard.h"
 #include "../hooks/stall_probe/stall_probe.h"
 #include "../hooks/teleport/runtime.h"
 #include "../hooks/world_objects/world_object_registry.h"
@@ -215,7 +209,9 @@ void clear_game_targets() noexcept {
 
     (void)hooks::hitch_probe::install();
     (void)hooks::stall_probe::install();
-    (void)hooks::sense_chain_guard::install();
+    // The stock async-I/O wrapper reloads its singleton after pumping it and can observe the
+    // legitimate teardown/recreate null window. This optional guard keeps the owner it pumped.
+
     (void)hooks::async_io::install();
 
     (void)hooks::config_getter::install();
@@ -246,31 +242,22 @@ void clear_game_targets() noexcept {
     (void)hooks::noclip::install();
     (void)hooks::infinite_ammo::install();
     (void)hooks::inactivity::install();
-
     /*
-     * Preserve Cowisma player features.
+     * Preserve Cowisma player features that remain separate from the
+     * upstream 0.5.0 activation path.
      */
     (void)hooks::world_speed::install();
     (void)hooks::no_turnback::install();
     (void)hooks::godmode::install();
 
-    (void)hooks::queuez::install();
-    (void)hooks::bitmap::install();
-    (void)hooks::membership_probe::install();
-
+    // Read-only. While the prologue-filler boot task runs, it logs once per second which
+    // cinematic readiness stage is false, the thing the task's five-second timeout hides.
     (void)hooks::cine_probe::install();
-    (void)hooks::cine_auth_probe::install();
-
-    /*
-     * Preserve Cowisma's world-object registry.
-     */
+    // Retains the native handle for package placements without publishing unnamed map objects.
     (void)hooks::world_objects::install();
+    // The server asks for refresh slices through this and never calls the Client otherwise.
+    if (!server::bap::register_client_investment_slice_consumer(
 
-    /*
-     * Preserve Cowisma's investment publication consumers.
-     */
-    if (!server::bap::register_client_investment_consumers(
-            &hooks::network::investment::notify_investment_publication,
             &content::investment::worker::request_slice)) {
 
         core::log::write(core::log::Channel::client,

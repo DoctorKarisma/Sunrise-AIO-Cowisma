@@ -7,6 +7,7 @@
 namespace sunrise::server::activity::mission::lua_vm::detail {
 namespace {
 
+// Lua sequence handles use these private metatable identities.
 constexpr const char* kSequencesMetatable = "SunriseActorSequences";
 constexpr const char* kSequenceMetatable = "SunriseActorSequence";
 
@@ -171,6 +172,7 @@ int slot_play_actor_sequence(lua_State* state) {
     if (!current_slot(state, *handle, slot) || !exact_combatant_slot(slot)) {
         return luaL_error(state, "activity slot is not an exact combatant");
     }
+    // Only these named arguments belong to this API.
     static constexpr std::array<std::string_view, 1> kArguments{"sequence"};
     refuse_unknown_arguments(state, kArguments);
     static_cast<void>(push_argument(state, "sequence"));

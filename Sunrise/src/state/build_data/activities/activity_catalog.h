@@ -6,6 +6,7 @@
 #include <string_view>
 
 namespace sunrise::state::build_data::activities {
+// Activity and label tables have fixed storage capacities.
 inline constexpr std::size_t kCapacity = 4095;
 inline constexpr std::size_t kContentCount = 23, kExperienceKindCount = 7;
 struct NativeText {
@@ -27,11 +28,15 @@ struct Definition {
     std::uint32_t gameplaySettingsHash{};
     std::uint8_t nativeType{};
     std::uint8_t destination{};
+    /** The client plays this row's movie before its onward activity when the display names one. */
+    bool movieRoute{};
     std::array<char, 40> package{};
     [[nodiscard]] std::string_view name() const noexcept {
         return package.data();
     }
 };
+/** Name hash of the empty string: the display row names no movie. */
+inline constexpr std::uint32_t kNoMovie = 0x811C9DC5U;
 struct Presentation {
     std::array<char, 160> title{};
     std::array<char, 1024> description{};
@@ -43,11 +48,18 @@ struct Presentation {
     /** Original release index; releases::unresolved when not established. */
     std::uint8_t contentGroup{};
     std::uint8_t classificationSource{}; // 4 explicit local activity-hash release map
+    /** Package name hash of the pre-rendered movie the display row names. */
+    std::uint32_t movie{kNoMovie};
 };
 /** Optional, immutable Director text. Kept outside the persistent scenario cache. */
 [[nodiscard]] bool publish_presentations(std::span<const Presentation> rows) noexcept;
 /** @return The indexed presentation, or an empty immutable value when unavailable. */
 [[nodiscard]] const Presentation& presentation(std::uint16_t index) noexcept;
+/** @return True when launching this row plays its movie, then the client starts the next row. */
+[[nodiscard]] inline bool plays_movie(const Definition& row) noexcept {
+    const std::uint32_t movie = presentation(row.index).movie;
+    return row.movieRoute && movie != kNoMovie && movie != 0;
+}
 /** Immutable process-local public activity table, independent of the persistent scenario cache. */
 [[nodiscard]] bool ready() noexcept;
 /** @return True when extraction failed and no catalog was published during this process. */

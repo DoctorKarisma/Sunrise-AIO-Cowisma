@@ -267,24 +267,32 @@ bool write_bubble_block(bits::Writer& writer, const Grant& grant) noexcept {
 namespace {
 
 /**
- * Writes one fixed key presence mask, low bit first.
- * A key whose bit is clear is dropped in silence, so the mask has to match the key count exactly.
+ * Writes the top-level key presence mask, low bit first.
+ * The mask indexes the key array, so a retired key clears its bit and keeps its ordinal. A key
+ * whose bit is clear while the client holds it is deactivated, which is what a leave delta needs.
  * @param writer Body writer.
- * @param keyCount Keys the matching list carries.
+ * @param roster Groups in publish order.
+ * @param keyCount Keys the top-level list carries.
  * @param wordCount Words in the schema's fixed mask.
  * @return True when the whole mask fits.
  */
-[[nodiscard]] bool
-write_key_mask(bits::Writer& writer, std::size_t keyCount, std::size_t wordCount) noexcept {
+[[nodiscard]] bool write_key_mask(bits::Writer& writer,
+                                  const Roster& roster,
+                                  std::size_t keyCount,
+                                  std::size_t wordCount) noexcept {
     if (keyCount > wordCount * kChunkWidth) {
         return false;
     }
     bool encoded = true;
     for (std::size_t word = 0; encoded && word < wordCount; ++word) {
-        const std::size_t low = word * kChunkWidth;
-        const std::size_t set = keyCount > low ? keyCount - low : 0;
-        const std::size_t bits = set > kChunkWidth ? kChunkWidth : set;
-        encoded = writer.write((std::uint64_t{1} << bits) - 1, kChunkWidth);
+        std::uint32_t mask = 0;
+        for (std::size_t bit = 0; bit < kChunkWidth; ++bit) {
+            const std::size_t index = word * kChunkWidth + bit;
+            if (index < keyCount && !roster.groups[index].retired) {
+                mask |= std::uint32_t{1} << bit;
+            }
+        }
+        encoded = writer.write(mask, kChunkWidth);
     }
     return encoded;
 }
@@ -371,8 +379,8 @@ bool write_roster_delta(bits::Writer& writer,
     }
     encoded = encoded && writer.write(1, kPresenceWidth)
               && writer.bit_count() == root + delta_mask_bit(keyCount);
-    // A key whose mask bit is clear is dropped in silence, so the mask must match the key count.
-    encoded = encoded && write_key_mask(writer, keyCount, kDeltaMaskWords)
+    // A key whose mask bit is clear is dropped, so only a retired key may clear its bit.
+    encoded = encoded && write_key_mask(writer, roster, keyCount, kDeltaMaskWords)
               && writer.write(1, kPresenceWidth)
               && writer.bit_count() == root + delta_state_count_bit(keyCount)
               && writer.write(static_cast<std::uint32_t>(keyCount), kDeltaCountWidth);

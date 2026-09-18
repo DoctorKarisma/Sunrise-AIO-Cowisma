@@ -97,7 +97,7 @@ void report_squad_provoked(const state::activity::SessionBinding& binding,
 
 /** Starts the optional, off-by-default server mission-script manager. */
 void initialize() noexcept;
-/** Writes the readable authored controller filename for one 1-based SDK activity row. */
+/** Writes the authored controller path, `<name>/<name>.lua`, for one 1-based SDK activity row. */
 [[nodiscard]] bool controller_file_name(std::uint32_t oneBasedActivityRow,
                                         std::span<char> output) noexcept;
 /** Runs one bounded event/reducer/output slice after Activity Host ingress. */

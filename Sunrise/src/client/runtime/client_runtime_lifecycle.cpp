@@ -7,10 +7,8 @@
 #include "../content/investment/worker.h"
 #include "../hooks/assert_handler/assert_handler_lifecycle.h"
 #include "../hooks/async_io/async_io_lifetime_guard.h"
-#include "../hooks/bitmap/bitmap_hook_lifecycle.h"
 #include "../hooks/bootflow/bootflow_hook_lifecycle.h"
 #include "../hooks/bootflow/bootflow_texture_override.h"
-#include "../hooks/cine_auth_probe/cine_auth_probe.h"
 #include "../hooks/cine_probe/cine_probe.h"
 #include "../hooks/config_getter/config_getter_lifecycle.h"
 #include "../hooks/cursor/runtime.h"
@@ -19,15 +17,12 @@
 #include "../hooks/hitch_probe/hitch_probe.h"
 #include "../hooks/inactivity/inactivity_override.h"
 #include "../hooks/infinite_ammo/infinite_ammo.h"
-#include "../hooks/membership_probe/membership_probe.h"
 #include "../hooks/network/runtime.h"
 #include "../hooks/no_turnback/no_turnback.h"
 #include "../hooks/noclip/runtime.h"
 #include "../hooks/package_trust/package_trust_bypass.h"
 #include "../hooks/polled_input/runtime.h"
-#include "../hooks/queuez/queuez_hook_lifecycle.h"
 #include "../hooks/retail_log/retail_log_lifecycle.h"
-#include "../hooks/sense_chain_guard/sense_chain_guard.h"
 #include "../hooks/stall_probe/stall_probe.h"
 #include "../hooks/teleport/runtime.h"
 #include "../hooks/world_objects/world_object_registry.h"
@@ -108,18 +103,6 @@ bool shutdown() noexcept {
         ReleaseSRWLockExclusive(&runtime::g_lock);
         return false;
     }
-
-    // Every probe below reads through a detour, so one left in place is a branch into code a
-    // later unload unmaps.
-    if (!hooks::cine_auth_probe::uninstall()) {
-        core::log::write(core::log::Channel::client,
-                         core::log::Level::error,
-                         "ev=shutdown stage=cine_auth_probe result=fail");
-
-        ReleaseSRWLockExclusive(&runtime::g_lock);
-        return false;
-    }
-
     if (!hooks::cine_probe::uninstall()) {
         core::log::write(core::log::Channel::client,
                          core::log::Level::error,
@@ -128,25 +111,6 @@ bool shutdown() noexcept {
         ReleaseSRWLockExclusive(&runtime::g_lock);
         return false;
     }
-
-    if (!hooks::membership_probe::uninstall()) {
-        core::log::write(core::log::Channel::client,
-                         core::log::Level::error,
-                         "ev=shutdown stage=membership_probe result=fail");
-
-        ReleaseSRWLockExclusive(&runtime::g_lock);
-        return false;
-    }
-
-    if (!hooks::sense_chain_guard::uninstall()) {
-        core::log::write(core::log::Channel::client,
-                         core::log::Level::error,
-                         "ev=shutdown stage=sense_chain_guard result=fail");
-
-        ReleaseSRWLockExclusive(&runtime::g_lock);
-        return false;
-    }
-
     // The watcher runs on its own thread, so it stops before the targets it reads are cleared.
     if (!hooks::stall_probe::uninstall()) {
         core::log::write(core::log::Channel::client,
@@ -165,8 +129,6 @@ bool shutdown() noexcept {
         ReleaseSRWLockExclusive(&runtime::g_lock);
         return false;
     }
-
-    hooks::bitmap::uninstall();
     activity::mission_launch::uninstall();
     hooks::bootflow::uninstall();
     hooks::godmode::uninstall();
@@ -176,8 +138,6 @@ bool shutdown() noexcept {
     hooks::inactivity::uninstall();
     hooks::noclip::uninstall();
     hooks::teleport::uninstall();
-    hooks::queuez::uninstall();
-
     if (!hooks::config_getter::uninstall()) {
         ReleaseSRWLockExclusive(&runtime::g_lock);
         return false;
@@ -199,9 +159,7 @@ bool shutdown() noexcept {
 
     content::activity::sdk_generation::reset();
     content::activity::scriptables::reset();
-
-    server::bap::unregister_client_investment_consumers();
-
+    server::bap::unregister_client_investment_slice_consumer();
     content::investment::worker::reset();
 
     (void)hooks::async_io::uninstall();

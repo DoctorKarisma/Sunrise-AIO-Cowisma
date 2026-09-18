@@ -27,6 +27,7 @@ struct ContentNames {
                                                                 : "Content name unavailable";
     }
 };
+// The launcher reads the fixed content labels and unresolved category.
 inline constexpr ContentNames kContent{};
 inline constexpr auto kUnresolvedContent = releases::unresolved;
 /** Launcher presentation preference only; the native catalog and release evidence remain intact. */
@@ -60,6 +61,7 @@ inline constexpr auto kUnresolvedContent = releases::unresolved;
                ? 14
                : content; // Content IDs 14 and 17 share navigation, retaining their launch IDs.
 }
+/** @return The launcher category selected from the experience kind and native type. */
 [[nodiscard]] inline std::size_t activity_type(const Activity& activity) noexcept {
     const auto kind = state::build_data::activities::presentation(activity.index).experienceKind;
     if (kind == 3) {
@@ -122,6 +124,7 @@ inline constexpr auto kUnresolvedContent = releases::unresolved;
         return 8;
     }
 }
+/** @return True when text contains the query without case distinctions. */
 [[nodiscard]] inline bool contains(std::string_view text, std::string_view query) noexcept {
     if (query.empty()) {
         return true;
@@ -141,6 +144,7 @@ inline constexpr auto kUnresolvedContent = releases::unresolved;
     }
     return false;
 }
+/** Uses the extracted title, package name, then activity index as display fallbacks. */
 [[nodiscard]] inline std::array<char, 160> title(const Activity& activity) noexcept {
     const auto& display = state::build_data::activities::presentation(activity.index);
     if (display.title[0] != '\0') {
@@ -156,6 +160,7 @@ inline constexpr auto kUnresolvedContent = releases::unresolved;
     (void)std::snprintf(result.data(), result.size(), "%s", activity.package.data());
     return result;
 }
+/** Selects an icon from content overrides, native style and activity type. */
 [[nodiscard]] inline state::build_data::activities::Icon
 activity_icon(const Activity& activity) noexcept {
     using Icon = state::build_data::activities::Icon;
@@ -266,6 +271,7 @@ activity_icon(const Activity& activity) noexcept {
            + (row.nativeType == 3 || row.nativeType == 0 ? 10 : 0)
            - (rule != nullptr ? rule->preferencePenalty : 0);
 }
+/** @return The content group's icon, or the empty icon for an unknown group. */
 [[nodiscard]] inline state::build_data::activities::Icon
 release_icon(std::size_t content) noexcept {
     using Icon = state::build_data::activities::Icon;
@@ -305,6 +311,7 @@ release_icon(std::size_t content) noexcept {
         return Icon{0};
     }
 }
+/** @return True when the content, type and text filters all match. */
 [[nodiscard]] inline bool matches(const Activity& activity,
                                   std::size_t content,
                                   std::size_t type,

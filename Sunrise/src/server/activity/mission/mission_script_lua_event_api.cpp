@@ -15,6 +15,8 @@ namespace sunrise::server::activity::mission::lua_vm::detail {
         return "sensorSenseUpdated";
     case host::EventKind::clientStateChanged:
         return "clientStateChanged";
+    case host::EventKind::regionChanged:
+        return "regionChanged";
     case host::EventKind::incidentReceived:
         return "incidentReceived";
     case host::EventKind::timerElapsed:
@@ -106,6 +108,8 @@ namespace sunrise::server::activity::mission::lua_vm::detail {
         return kSenseUpdateEventMetatable;
     case host::EventKind::clientStateChanged:
         return kClientStateChangedEventMetatable;
+    case host::EventKind::regionChanged:
+        return kRegionChangedEventMetatable;
     case host::EventKind::incidentReceived:
         return kIncidentReceivedEventMetatable;
     case host::EventKind::clientMessageReceived:
@@ -214,6 +218,10 @@ bool push_common_member(lua_State* state, const host::Event& event, std::string_
     }
     if (key == "source_generation") {
         push_u64_string(state, event.sourceGeneration);
+        return true;
+    }
+    if (key == "attempt_generation") {
+        push_u64_string(state, event.attemptGeneration);
         return true;
     }
     return false;

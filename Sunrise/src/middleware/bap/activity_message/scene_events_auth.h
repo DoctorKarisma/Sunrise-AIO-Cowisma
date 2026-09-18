@@ -16,6 +16,7 @@ namespace sunrise::middleware::bap::activity_message::scene_events {
 
 namespace fields = auth_fields;
 
+// Scene events use the Type 43 slot.
 inline constexpr std::uint8_t kSlotType = 43;
 /** The SDK format table carries the same class and schema for authored scenes. */
 inline constexpr std::uint32_t kComponentClass = 0x80806382U;

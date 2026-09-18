@@ -291,6 +291,11 @@ void destroy_state(Impl& impl) noexcept {
     }
     impl.identity = {};
     impl.definitions = {};
+    std::vector<state::activity::mission::DeviceRequestReport>{}.swap(impl.deviceRequests);
+    std::vector<state::activity::mission::SquadPopulation>{}.swap(impl.squadPopulations);
+    impl.deviceRequestGeneration = 0;
+    impl.ghostLevels = {};
+    impl.ghostLevelCount = 0;
     std::vector<Intent>{}.swap(impl.outbox);
     impl.variables = {};
     impl.timers = {};
@@ -307,6 +312,7 @@ void destroy_state(Impl& impl) noexcept {
     impl.collections = 0;
     impl.phase = 0;
     impl.initialStateRegion = -1;
+    impl.initialStateSpawnSet = 0;
     impl.lastError = {};
     impl.state = nullptr;
     impl.frame = nullptr;

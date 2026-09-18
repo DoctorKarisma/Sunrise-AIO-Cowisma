@@ -48,6 +48,18 @@ push_incident_revision_member(lua_State* state, const host::Event& event, std::s
         return "slot.set_channel";
     case ActionKind::applySlotAuth:
         return {};
+    case ActionKind::runActorProgram:
+        return "slot.run_atoms";
+    case ActionKind::retireActor:
+        return "slot.retire_actor";
+    case ActionKind::setInteractableObject:
+        return "slot.set_interactable_object";
+    case ActionKind::setGhostLink:
+        return "slot.set_ghost_link";
+    case ActionKind::watchDamage:
+        return "slot.watch_damage";
+    case ActionKind::assignCombatObjective:
+        return "slot.assign_combat_objective";
     case ActionKind::setLifetime:
         return "lifetime.set";
     case ActionKind::restartCheckpoint:
@@ -67,6 +79,8 @@ push_incident_revision_member(lua_State* state, const host::Event& event, std::s
         return "slot.advance_task";
     case ActionKind::playDialogueCue:
         return "slot.play_dialogue_cue";
+    case ActionKind::holdSpawn:
+        return "mission.hold_spawn";
     case ActionKind::selectMissionState:
         return "mission.select_state";
     }

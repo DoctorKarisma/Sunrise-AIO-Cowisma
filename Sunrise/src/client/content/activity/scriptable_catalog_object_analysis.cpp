@@ -53,7 +53,8 @@ struct PlacedChainContext final {
             context.config, descriptor, row.placementIdentifier);
         context.analysis->descriptors.push_back(row);
         internal::RawReference reference{};
-        if (internal::read_type2_squad_reference(context.config, descriptor, reference)) {
+        if (internal::read_type2_squad_reference(context.config, descriptor, reference)
+            || internal::read_type30_volume_reference(context.config, descriptor, reference)) {
             context.analysis->references.push_back(reference);
         }
     } catch (...) {

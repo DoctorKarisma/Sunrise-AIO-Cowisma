@@ -56,6 +56,7 @@ inline void build_menu_text(
         && tables::find_array_at(bytes, 8, seasons) && seasons.count <= 64
         && seasons.dataOffset <= bytes.size()
         && seasons.count <= (bytes.size() - seasons.dataOffset) / 72) {
+        // Season rows must match these identities before their labels are used.
         constexpr std::array<std::uint32_t, 7> identities{
             0x854AC306, 0xAC5281E8, 0xFEDABB80, 0xD758957D, 0x77A58C71, 0xF088B659, 0x0ED0ED8B};
         for (std::size_t i = 0; i < identities.size(); ++i) {
@@ -75,6 +76,7 @@ inline void build_menu_text(
         std::uint32_t tag, cls;
         std::size_t offset;
     };
+    // These authored rows supply the event title references.
     constexpr std::array<Event, 4> events{{{14, 0x8161353B, 0x80805CE1, 132},
                                            {15, 0x816135B4, 0x80805CE1, 132},
                                            {19, 0x816134AB, 0x80805CE1, 132},

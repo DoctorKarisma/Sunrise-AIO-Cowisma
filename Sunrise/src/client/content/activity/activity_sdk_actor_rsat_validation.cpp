@@ -204,7 +204,9 @@ bool add_engine_semantics(Snapshot& snapshot) {
 
 /** Validates every id, scalar, raw row, owner, range, order, join, and flag. */
 bool validate(const Snapshot& snapshot) noexcept {
-    if (!sequence_inventory::validate(snapshot)) return false;
+    if (!sequence_inventory::validate(snapshot)) {
+        return false;
+    }
     if (!snapshot.complete || snapshot.actorClasses.empty()) {
         return false;
     }

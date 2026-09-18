@@ -771,6 +771,10 @@ pack::Tables Storage::tables() const noexcept {
         actorSequenceTables,
         actorSequenceEntries,
         actorSequenceBindings,
+        dialogueCues,
+        combatObjectiveGroups,
+        actorAbilities,
+        actorAbilityTargets,
     };
 }
 

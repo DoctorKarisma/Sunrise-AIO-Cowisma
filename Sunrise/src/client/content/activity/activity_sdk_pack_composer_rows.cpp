@@ -487,6 +487,8 @@ translate_native_rows(const Inputs& inputs, const detail::StringResolver& linker
     output.actorStateNames = actorRsat.actorStateNames;
     output.actorSequenceTables = actorRsat.sequenceTables;
     output.actorSequenceBindings = actorRsat.sequenceBindings;
+    output.actorAbilities = actorRsat.actorAbilities;
+    output.actorAbilityTargets = actorRsat.actorAbilityTargets;
     output.actorSequenceEntries.reserve(actorRsat.sequenceEntries.size());
     for (const auto& input : actorRsat.sequenceEntries) {
         auto row = input.row;
@@ -662,6 +664,8 @@ translate_native_rows(const Inputs& inputs, const detail::StringResolver& linker
             return false;
         }
     }
+    output.dialogueCues = authoredScenes.dialogueCues;
+    output.combatObjectiveGroups = authoredScenes.combatObjectiveGroups;
     output.dialogueCueTexts.resize(authoredScenes.dialogueCueTexts.size());
     for (std::size_t index = 0; index < authoredScenes.dialogueCueTexts.size(); ++index) {
         const authored_scene_inventory::DialogueCueText& input =

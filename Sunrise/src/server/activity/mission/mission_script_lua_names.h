@@ -27,6 +27,7 @@ inline constexpr char kLifetimeMetatable[] = "sunrise.mission.lifetime";
 inline constexpr char kSenseUpdateEventMetatable[] = "sunrise.mission.event.sense_update";
 inline constexpr char kClientStateChangedEventMetatable[] =
     "sunrise.mission.event.client_state_changed";
+inline constexpr char kRegionChangedEventMetatable[] = "sunrise.mission.event.region_changed";
 // Client-sent traffic: one arrived incident, then one routed message.
 inline constexpr char kIncidentReceivedEventMetatable[] = "sunrise.mission.event.incident_received";
 inline constexpr char kClientMessageEventMetatable[] =

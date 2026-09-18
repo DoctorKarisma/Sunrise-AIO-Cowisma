@@ -184,6 +184,24 @@ std::span<const format::DialogueCueText> Catalog::dialogue_cue_texts() const noe
     return rows<format::DialogueCueText>(header_, view_, format::SectionIndex::dialogueCueTexts);
 }
 
+std::span<const format::DialogueCue> Catalog::dialogue_cues() const noexcept {
+    return rows<format::DialogueCue>(header_, view_, format::SectionIndex::dialogueCues);
+}
+
+std::span<const format::ActorAbility> Catalog::actor_abilities() const noexcept {
+    return rows<format::ActorAbility>(header_, view_, format::SectionIndex::actorAbilities);
+}
+
+std::span<const format::ActorAbilityTarget> Catalog::actor_ability_targets() const noexcept {
+    return rows<format::ActorAbilityTarget>(
+        header_, view_, format::SectionIndex::actorAbilityTargets);
+}
+
+std::span<const format::CombatObjectiveGroup> Catalog::combat_objective_groups() const noexcept {
+    return rows<format::CombatObjectiveGroup>(
+        header_, view_, format::SectionIndex::combatObjectiveGroups);
+}
+
 std::span<const format::DirectiveElement> Catalog::directive_elements() const noexcept {
     return rows<format::DirectiveElement>(header_, view_, format::SectionIndex::directiveElements);
 }

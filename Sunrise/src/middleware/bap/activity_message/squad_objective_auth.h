@@ -16,6 +16,7 @@ namespace sunrise::middleware::bap::activity_message::squad_objective {
 
 namespace fields = auth_fields;
 
+// Squad objective updates use this Type 1 schema and fixed prefix size.
 inline constexpr std::uint32_t kSchema = squad_auth::kSchema;
 inline constexpr std::size_t kBits = 153;
 inline constexpr std::size_t kBytes = 20;

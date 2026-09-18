@@ -7,6 +7,7 @@
 #include "activity_catalog.h"
 
 namespace sunrise::state::build_data::activities::releases {
+// The final content category is reserved for unresolved rows.
 inline constexpr std::size_t contentCount = 23;
 inline constexpr auto unresolved = contentCount - 1;
 static_assert(contentCount == kContentCount);
@@ -15,6 +16,7 @@ struct Rule {
     std::uint16_t nativeIndex, experience;
     std::uint8_t release, kind, preferencePenalty{};
 };
+// Release assignments are keyed by the installed activity hash.
 inline constexpr std::array<Rule, 1170> rules{{
     {0x00A64D9CU, 104, 104, 7, 0},    {0x00AAE268U, 98, 98, 7, 1},
     {0x00D2C692U, 819, 232, 3, 2},    {0x011D555BU, 680, 232, 3, 2},
@@ -602,6 +604,7 @@ inline constexpr std::array<Rule, 1170> rules{{
     {0xFE77744DU, 748, 748, 1, 0},    {0xFED660A7U, 1146, 1145, 4, 3},
     {0xFF14DBA6U, 613, 232, 3, 2},    {0xFF534D45U, 885, 885, 1, 4},
 }};
+/** Searches hash-ordered release rules and returns nullptr for an unknown activity. */
 [[nodiscard]] inline const Rule* lookup_hash(std::uint32_t hash) noexcept {
     std::size_t first{}, last{rules.size()};
     while (first < last) {

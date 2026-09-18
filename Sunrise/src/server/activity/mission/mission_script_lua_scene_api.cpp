@@ -34,7 +34,7 @@ namespace sunrise::server::activity::mission::lua_vm::detail {
     return 1;
 }
 
-/** Stages one authored-scene activation. scene:activate{} reads no parameters. */
+/** Scene creation records exact SDK sources before native preparation can change them. */
 [[nodiscard]] int scene_activate(lua_State* state) {
     const auto* const handle =
         static_cast<const SceneHandle*>(luaL_checkudata(state, 1, kSceneMetatable));
@@ -42,12 +42,26 @@ namespace sunrise::server::activity::mission::lua_vm::detail {
     if (!current_scene(state, *handle, definition)) {
         return luaL_error(state, "authored scene is stale or invalid");
     }
-    refuse_unknown_arguments(state, {});
+    // Only these named arguments belong to this API.
+    static constexpr std::array<std::string_view, 1> kDeclared{"spawn"};
+    refuse_unknown_arguments(state, kDeclared);
     CallFrame& frame = active_frame(state);
     Intent intent{};
     intent.kind = IntentKind::activateAuthoredScene;
     intent.firstRow = definition.occurrenceRow;
     intent.secondRow = definition.slotRow;
+    intent.active = optional_boolean_argument(state, "spawn", false);
+    if (intent.active) {
+        const auto& api = impl_from_state(state)->definitions;
+        std::size_t count = 0;
+        if (api.resolveSceneSpawnSources == nullptr
+            || !api.resolveSceneSpawnSources(
+                api.context, definition.occurrenceRow, definition.slotRow, intent.burstRows, count)
+            || count > intent.burstRows.size()) {
+            return luaL_error(state, "scene has no unambiguous authored spawn cast");
+        }
+        intent.burstRowCount = static_cast<std::uint8_t>(count);
+    }
     return queue_intent(state, frame, intent);
 }
 
@@ -59,6 +73,7 @@ namespace sunrise::server::activity::mission::lua_vm::detail {
     if (!current_scene(state, *handle, definition)) {
         return luaL_error(state, "authored scene is stale or invalid");
     }
+    // Only these named arguments belong to this API.
     static constexpr std::array<std::string_view, 1> kDeclared{"key"};
     refuse_unknown_arguments(state, kDeclared);
     const lua_Integer key = checked_integer_argument(state, "key");

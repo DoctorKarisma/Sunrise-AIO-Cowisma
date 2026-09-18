@@ -71,6 +71,42 @@ bool read_type2_squad_reference(
     return true;
 }
 
+/** Reads only a type-30 player monitor's measured type-60 volume. */
+bool read_type30_volume_reference(
+    std::span<const std::byte> blob,
+    const middleware::content::packages::tables::SlotDescriptor& descriptor,
+    RawReference& output) noexcept {
+    namespace auth = middleware::bap::activity_message::scriptable_auth;
+    namespace tables = middleware::content::packages::tables;
+    namespace format = state::activity_sdk::format;
+    output = {};
+    if (descriptor.slotType != format::kOccupancySlotType
+        || descriptor.componentClass != format::kOccupancyComponentClass
+        || descriptor.senseSchema != format::kOccupancySenseSchema
+        || descriptor.authSchema != format::kOccupancyAuthSchema
+        || descriptor.slotIndex > (std::numeric_limits<std::int16_t>::max)()) {
+        return false;
+    }
+    const std::size_t offset = static_cast<std::size_t>(descriptor.descriptorOffset)
+                               + tables::kType30MeasuredReferenceOffset;
+    RawReference row{};
+    if (offset > (std::numeric_limits<std::uint32_t>::max)()
+        || !read_value(blob, offset, row.targetKey)
+        || !read_value(blob, offset + sizeof(row.targetKey), row.targetType)
+        || !read_value(
+            blob, offset + sizeof(row.targetKey) + sizeof(row.targetType), row.targetIndex)
+        || row.targetKey == 0 || row.targetKey == format::kAbsentIndex
+        || row.targetKey == kAbsentClientReferenceKey || row.targetType != auth::kType60SlotType
+        || row.targetIndex > (std::numeric_limits<std::int16_t>::max)()) {
+        return false;
+    }
+    row.configTag = descriptor.configTag;
+    row.offset = static_cast<std::uint32_t>(offset);
+    row.sourceIndex = descriptor.slotIndex;
+    output = row;
+    return true;
+}
+
 /** Retains aligned ClientRef records from one reached config blob. */
 void collect_typed_references(std::span<const std::byte> blob,
                               std::uint32_t configTag,

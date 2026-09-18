@@ -15,6 +15,7 @@ inline void build_artwork(const middleware::content::packages::reader::Source& s
     namespace packages = middleware::content::packages;
     namespace catalog = state::build_data::activities;
     namespace parser = packages::tables::activities;
+    // Style tags index the fixed artwork table.
     constexpr std::array<std::uint32_t, catalog::kIconCount> styles{
         0,          0x816130A9, 0x8161308D, 0x816130C9, 0x8161309B, 0x816130B9, 0x8161319B,
         0x8161331E, 0x816132CF, 0x8161311D, 0x816131E5, 0x81613302, 0x81613292, 0x81613133,
@@ -70,6 +71,7 @@ inline void build_artwork(const middleware::content::packages::reader::Source& s
         std::uint32_t expectedTexture;
         std::uint8_t field{20}, variant{};
     };
+    // Each authored icon index must resolve to its expected texture.
     constexpr std::array<NativeIcon, 13> eventIcons{
         {// The 32px season-table marks are smaller than the standalone 45px inventory marks.
          // Variant 3 is the complete authored glyph; 96px variants are corner tiles with a smaller
@@ -115,6 +117,7 @@ inline void build_artwork(const middleware::content::packages::reader::Source& s
     (void)catalog::publish_artwork(std::move(images));
 }
 
+/** Publishes localized activity text and release groupings for the installed activity rows. */
 inline void
 build_presentations(const middleware::content::packages::reader::Source& source,
                     middleware::content::packages::reader::Scratch& scratch,
@@ -175,6 +178,7 @@ build_presentations(const middleware::content::packages::reader::Source& source,
     for (std::size_t i = 0; i < rows.size(); ++i) {
         auto& p = presentation[i];
         p.nativeStyle = refs[i].style;
+        p.movie = refs[i].movie;
         p.experience = rows[i].index;
         p.contentGroup = static_cast<std::uint8_t>(catalog::releases::unresolved);
         if (const auto* rule = catalog::releases::lookup(rows[i])) {

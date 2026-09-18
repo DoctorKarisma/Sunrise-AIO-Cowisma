@@ -12,6 +12,23 @@
 namespace sunrise::server::activity::mission::lua_vm::detail {
 namespace {
 
+/** Exposes the authored held regions of one accepted native transition. */
+[[nodiscard]] int region_changed_index(lua_State* state) {
+    const auto& event = check_event(state, 1);
+    const auto key = lua_string_view(state, 2);
+    if (push_common_member(state, event, key) || push_mission_sequence_member(state, event, key)) {
+        return 1;
+    }
+    if (key == "region_index") {
+        lua_pushinteger(state, event.regionIndex);
+    } else if (key == "previous_region_index" && event.previousRegionIndex >= 0) {
+        lua_pushinteger(state, event.previousRegionIndex);
+    } else {
+        lua_pushnil(state);
+    }
+    return 1;
+}
+
 /** The type-60 target read out of one type-31 player-trigger incident. */
 [[nodiscard]] bool
 push_player_trigger_member(lua_State* state, const host::Event& event, std::string_view key) {
@@ -57,22 +74,15 @@ push_trigger_member(lua_State* state, const host::Event& event, std::string_view
     return true;
 }
 
-/** Squad totals plus the per-slot count list, pushed as a one-based Lua array. */
+/** Squad totals and native objective queries share the exact reported slot identity. */
 [[nodiscard]] bool
 push_squad_state_member(lua_State* state, const host::Event& event, std::string_view key) {
-    if (key == "alive_count") {
+    if (key == "task_cost") {
+        lua_pushcfunction(state, &event_task_cost);
+    } else if (key == "task_group") {
+        lua_pushcfunction(state, &event_task_group);
+    } else if (key == "alive_count") {
         lua_pushinteger(state, event.squadAliveCount);
-    } else if (key == "objective_revision") {
-        lua_pushinteger(state, event.squadObjectiveRevision);
-    } else if (key == "task_costs") {
-        lua_createtable(state, static_cast<int>(host::kSquadObjectiveGroupCount), 0);
-        for (unsigned group = 0; group < host::kSquadObjectiveGroupCount; ++group) {
-            if ((event.squadObjectiveCostMask & (1U << group)) == 0) {
-                continue;
-            }
-            lua_pushnumber(state, event.squadObjectiveCosts[group]);
-            lua_rawseti(state, -2, static_cast<lua_Integer>(group) + 1);
-        }
     } else if (key == "previous_alive_count") {
         lua_pushinteger(state, event.squadPreviousAliveCount);
     } else if (key == "removal_flag") {
@@ -298,8 +308,8 @@ push_joined_revision_member(lua_State* state, const host::Event& event, std::str
             lua_pushinteger(state, event.actorDeliveryState);
             return 1;
         }
-        if (key == "dead") {
-            lua_pushboolean(state, event.actorDead);
+        if (key == "suppressed") {
+            lua_pushboolean(state, event.actorSuppressed);
             return 1;
         }
     }
@@ -308,10 +318,27 @@ push_joined_revision_member(lua_State* state, const host::Event& event, std::str
 }
 
 /**
- * Exposes reported device values without giving unknown fields a numeric default.
- * @param state Lua call holding the device event and requested member name.
- * @return One reported value, flag or nil.
+ * Returns the exact request first satisfied by this channel's accepted report.
+ * @param state Lua call holding the event and named channel argument.
+ * @return One RequestKey, or nil when this report satisfies no request on the channel.
  */
+[[nodiscard]] int device_applied_request(lua_State* state) {
+    const auto& event = check_event(state, 1);
+    // Only these named arguments belong to this API.
+    static constexpr std::array<std::string_view, 1> kDeclared{"channel"};
+    refuse_unknown_arguments(state, kDeclared);
+    const auto channel =
+        checked_argument<DeviceChannelHandle>(state, "channel", kDeviceChannelMetatable);
+    const auto request = event.deviceAppliedRequests[channel.channel];
+    if (request != 0) {
+        push_request_key(state, request);
+    } else {
+        lua_pushnil(state);
+    }
+    return 1;
+}
+
+/** Exposes accepted device state and any exact request satisfied by this report. */
 [[nodiscard]] int device_state_index(lua_State* state) {
     const auto& event = check_event(state, 1);
     const auto key = lua_string_view(state, 2);
@@ -319,6 +346,7 @@ push_joined_revision_member(lua_State* state, const host::Event& event, std::str
         || push_slot_identity_member(state, event, key)) {
         return 1;
     }
+    // Device fields follow the native position, power and lock channel order.
     static constexpr std::array<std::string_view, 3> values{"position", "power", "lock"};
     static constexpr std::array<std::string_view, 3> sequences{
         "position_sequence", "power_sequence", "lock_sequence"};
@@ -344,6 +372,8 @@ push_joined_revision_member(lua_State* state, const host::Event& event, std::str
         lua_pushboolean(state, event.deviceFirstReport);
     } else if (key == "reset") {
         lua_pushboolean(state, event.deviceReset);
+    } else if (key == "applied_request") {
+        lua_pushcfunction(state, &device_applied_request);
     } else {
         lua_pushnil(state);
     }
@@ -373,9 +403,10 @@ push_joined_revision_member(lua_State* state, const host::Event& event, std::str
     }
     if (key == "generation") {
         lua_pushinteger(state, event.objectGeneration);
-    } else if (key == "present") {
+    } else if (key == "present" || key == "alive") {
         lua_pushboolean(state, event.objectPresent);
-    } else if (key == "alive") {
+    } else if (key == "interaction_open") {
+        // Sense ordinal 1. Its meaning is assumed.
         lua_pushboolean(state, event.objectAlive);
     } else if (key == "owner_known") {
         lua_pushboolean(state, event.objectOwnerKnown);
@@ -614,6 +645,7 @@ push_joined_revision_member(lua_State* state, const host::Event& event, std::str
 
 /** Installs the derived and internal view metatables. */
 void register_derived_event_metatables(lua_State* state) {
+    register_metatable(state, kRegionChangedEventMetatable, &region_changed_index);
     register_metatable(state, kFireteamStateEventMetatable, &fireteam_state_index);
     register_metatable(state, kTriggerEnteredEventMetatable, &trigger_entered_index);
     register_metatable(state, kTriggerExitedEventMetatable, &trigger_exited_index);

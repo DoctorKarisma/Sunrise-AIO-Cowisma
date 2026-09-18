@@ -30,6 +30,12 @@ read_type2_squad_reference(std::span<const std::byte> blob,
                            const middleware::content::packages::tables::SlotDescriptor& descriptor,
                            RawReference& output) noexcept;
 
+/** Reads only a type-30 player monitor's measured type-60 volume. */
+[[nodiscard]] bool read_type30_volume_reference(
+    std::span<const std::byte> blob,
+    const middleware::content::packages::tables::SlotDescriptor& descriptor,
+    RawReference& output) noexcept;
+
 /** Retains aligned ClientRef records from one reached config blob. */
 void collect_typed_references(std::span<const std::byte> blob,
                               std::uint32_t configTag,

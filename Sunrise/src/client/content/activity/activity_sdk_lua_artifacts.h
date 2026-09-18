@@ -77,6 +77,8 @@ struct Source final {
     std::span<const format::ActorSequenceEntry> actorSequenceEntries{};
     std::span<const format::ActorSequenceBinding> actorSequenceBindings{};
     std::span<const ScenarioWorldSource> scenarioWorldSources{};
+    std::span<const format::CombatObjectiveGroup> combatObjectiveGroups{};
+    std::span<const format::ActorAbility> actorAbilities{};
 };
 
 /** One readable generated Lua module with a filesystem-safe canonical name. */

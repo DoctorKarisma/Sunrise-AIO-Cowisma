@@ -392,7 +392,9 @@ bool request_activity_squad_override(
     std::uint64_t expectedGeneration,
     const activity::host::ScriptableOutputReservation* reservation,
     std::array<std::int8_t, 4> authoredProfile,
-    state::gameplay::squad_entity_retirement::Eligibility squadRetirement) noexcept {
+    state::gameplay::squad_entity_retirement::Eligibility squadRetirement,
+    std::optional<middleware::bap::activity_message::squad_auth::Destination> destination,
+    std::optional<middleware::bap::activity_message::squad_auth::SpawnRule> spawnRule) noexcept {
     const std::lock_guard lock(session_lock());
     std::size_t linkCount = 0;
     const Session* const session = unique_activity_link_locked(binding, linkCount);
@@ -445,12 +447,15 @@ bool request_activity_squad_override(
                                                                nameHash,
                                                                reservation,
                                                                authoredProfile,
-                                                               squadRetirement);
+                                                               squadRetirement,
+                                                               destination,
+                                                               spawnRule);
     if (!queued) {
         core::log::write(core::log::Channel::server,
                          core::log::Level::warn,
                          "ev=squad_override_probe result=fail reason=host_request");
     }
+
     return queued;
 }
 

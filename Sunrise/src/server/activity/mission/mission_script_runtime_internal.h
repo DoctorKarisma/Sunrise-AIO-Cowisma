@@ -25,9 +25,13 @@
 #include "mission_script_squad_sense.h"
 #include "mission_script_vm.h"
 
-// What the seven mission-runtime translation units share: the instance table and service slice,
+// What the mission-runtime translation units share: the instance table and service slice,
 // the attach pipeline, the two Host feeds and the VM callback, the panel rows, the delivery state
 // machine, the intent fan-out, and the Sense and host-state edges.
+
+namespace sunrise::server::bap {
+struct ActivityMissionSeedPlan;
+} // namespace sunrise::server::bap
 
 namespace sunrise::server::activity::mission {
 
@@ -35,6 +39,10 @@ namespace sdk = state::activity_sdk;
 namespace generated = state::activity_sdk::generated_world;
 namespace format = state::activity_sdk::format;
 namespace mission_state = state::activity::mission;
+
+/** A restored scene intent must still name its complete captured parent set. */
+[[nodiscard]] bool scene_spawn_sources_match(const sdk::BoundView& view,
+                                             const lua_vm::Intent& intent) noexcept;
 
 enum class ProgramStatus : std::uint8_t {
     none,
@@ -85,7 +93,7 @@ constexpr std::size_t kSceneObservationCapacity = 32;
 constexpr std::size_t kObjectiveObservationCapacity = 32;
 static_assert(kSquadObjectiveGroupCount == host::kSquadObjectiveGroupCount);
 /** Watched Ghost links, damage monitors, interactable objects and named actors per instance. */
-constexpr std::size_t kGhostObservationCapacity = 8;
+constexpr std::size_t kGhostObservationCapacity = kGhostLinkCapacity;
 constexpr std::size_t kDamageObservationCapacity = 8;
 constexpr std::size_t kObjectInteractionObservationCapacity = 64;
 constexpr std::size_t kActorPathObservationCapacity = 64;
@@ -206,6 +214,9 @@ struct SessionRosterWatch final {
 
 /** Everything one bound mission program owns: its VM, views, delivery state and counters. */
 struct RuntimeInstance final {
+    mission_state::AttemptState attempt{};
+    std::uint64_t dispatchAttemptGeneration{};
+    std::uint64_t dispatchInputSequence{};
     lua_vm::Vm vm{};
     sdk::BoundView view{};
     generated::GeneratedWorldView worldView{};
@@ -325,9 +336,17 @@ void push_object_interaction_edges(RuntimeInstance& instance,
 /** Raises one event per Ghost link whose level changed. */
 void push_ghost_edges(RuntimeInstance& instance,
                       const host::SenseObservationSnapshot& sense) noexcept;
+/** Hands the VM the retained Ghost-link levels, so a callback can read one it did not receive. */
+void publish_ghost_levels(RuntimeInstance& instance) noexcept;
 /** Raises the squad state, spawn and death events derived from one msg 6 body. */
 void push_squad_edges(RuntimeInstance& instance,
                       const host::SenseObservationSnapshot& sense) noexcept;
+
+/** Retains generation-qualified population facts before the derived squad callback. */
+[[nodiscard]] bool observe_population(
+    RuntimeInstance& instance,
+    const host::SenseObservation& observation,
+    std::span<const middleware::bap::activity_message::sense_update::DecodedValue> values) noexcept;
 /** Raises one event per watched authored scene that latched complete. */
 void push_scene_edges(RuntimeInstance& instance,
                       const host::SenseObservationSnapshot& sense) noexcept;
@@ -336,6 +355,9 @@ void push_objective_edges(RuntimeInstance& instance,
                           const host::SenseObservationSnapshot& sense) noexcept;
 /** Reports one committed phase change to the script. */
 void queue_phase_entered(RuntimeInstance& instance, std::uint32_t previousPhase) noexcept;
+/** Moves the client to the region a freshly selected mission state belongs to. */
+void arm_state_region_teleport(RuntimeInstance& instance,
+                               const server::bap::ActivityMissionSeedPlan& plan) noexcept;
 /** @return The identity every host-state edge that is not a Sense edge carries. */
 [[nodiscard]] host::Event state_edge_event(const RuntimeInstance& instance) noexcept;
 /** Raises one event per peer session that appeared or left this instance's destination. */
@@ -370,7 +392,9 @@ void reconcile_terminal_delivery(RuntimeInstance& instance) noexcept;
 // The delivery unit owns these too. The intent fan-out drives the state machine through them.
 
 /** Releases an exact unstaged Host revision while retaining the durable intent. */
-[[nodiscard]] bool release_delivery_state(RuntimeInstance& instance) noexcept;
+[[nodiscard]] bool
+release_delivery_state(RuntimeInstance& instance,
+                       const mission_state::SquadPopulation* preparedParent = nullptr) noexcept;
 /** Returns the instance to the idle stage and clears delivery timing. */
 void clear_delivery(RuntimeInstance& instance) noexcept;
 /** Retires one successfully applied local effect without assigning a Host output revision. */
@@ -405,6 +429,10 @@ void report_intent_status(RuntimeInstance& instance,
 [[nodiscard]] bool service_delivery_timeout(RuntimeInstance& instance, std::uint64_t now) noexcept;
 
 // The dispatch unit owns this. The runtime unit's service slice calls it.
+
+/** Resolves a durable SDK actor command through the installed native policy. */
+[[nodiscard]] ActorCommandPolicyStatus
+dispatch_actor_command(const RuntimeInstance& instance, const lua_vm::Intent& intent) noexcept;
 
 /** Raises one queued intent, or advances the delivery already in flight. */
 void dispatch_intent(RuntimeInstance& instance, std::uint64_t now) noexcept;
