@@ -1,4 +1,4 @@
-#include "server_ui_module_runtime.h"
+﻿#include "server_ui_module_runtime.h"
 
 #include <string_view>
 
@@ -30,7 +30,7 @@ constexpr std::string_view kWeaponEditorDisplayName = "Gear Editor";
 /** A namespaced stable ID for the Spawn page. */
 constexpr std::string_view kSpawnStableId = "server.spawn";
 /** Short menu label for the Spawn page. */
-constexpr std::string_view kSpawnDisplayName = "Spawn";
+constexpr std::string_view kSpawnDisplayName = "Entity Spawner";
 
 core::ui::modules::registry::PageRegistration g_hostPage;
 core::ui::modules::registry::PageRegistration g_eventsPage;
@@ -87,3 +87,4 @@ void shutdown() noexcept {
 }
 
 } // namespace sunrise::server::ui::runtime
+
