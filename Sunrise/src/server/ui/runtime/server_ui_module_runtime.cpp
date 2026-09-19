@@ -5,6 +5,7 @@
 #include "../../../core/ui/modules/registry/ui_module_registry.h"
 #include "../../../core/ui/modules/ui_module_descriptor.h"
 #include "../activity_host/activity_host_panel.h"
+#include "../spawn/spawn_panel.h"
 #include "../tower_events/tower_events_panel.h"
 #include "../weapon_editor/weapon_editor_panel.h"
 
@@ -26,9 +27,15 @@ constexpr std::string_view kWeaponEditorStableId = "server.weapon_editor";
 /** Short menu label for the Gear Editor page. */
 constexpr std::string_view kWeaponEditorDisplayName = "Gear Editor";
 
+/** A namespaced stable ID for the Spawn page. */
+constexpr std::string_view kSpawnStableId = "server.spawn";
+/** Short menu label for the Spawn page. */
+constexpr std::string_view kSpawnDisplayName = "Spawn";
+
 core::ui::modules::registry::PageRegistration g_hostPage;
 core::ui::modules::registry::PageRegistration g_eventsPage;
 core::ui::modules::registry::PageRegistration g_weaponEditorPage;
+core::ui::modules::registry::PageRegistration g_spawnPage;
 
 } // namespace
 
@@ -60,11 +67,20 @@ bool initialize() noexcept {
         return false;
     }
 
+    if (!g_spawnPage.acquire(
+            core::ui::modules::Owner::server, kSpawnStableId, kSpawnDisplayName, &spawn::draw)) {
+        g_weaponEditorPage.release();
+        g_eventsPage.release();
+        g_hostPage.release();
+        return false;
+    }
+
     return true;
 }
 
 /** Removes the Server module's pages from the Core UI registry. */
 void shutdown() noexcept {
+    g_spawnPage.release();
     g_weaponEditorPage.release();
     g_eventsPage.release();
     g_hostPage.release();

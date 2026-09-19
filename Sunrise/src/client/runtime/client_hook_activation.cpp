@@ -33,6 +33,7 @@
 #include "../hooks/package_trust/package_trust_bypass.h"
 #include "../hooks/polled_input/runtime.h"
 #include "../hooks/retail_log/retail_log_lifecycle.h"
+#include "../hooks/spawn/spawn_runtime.h"
 #include "../hooks/stall_probe/stall_probe.h"
 #include "../hooks/teleport/runtime.h"
 #include "../hooks/world_objects/world_object_registry.h"
@@ -229,6 +230,7 @@ void clear_game_targets() noexcept {
      * or not the feature is enabled.
      */
     (void)hooks::teleport::install();
+    (void)hooks::spawn::install();
 
     /*
      * Tower Events:

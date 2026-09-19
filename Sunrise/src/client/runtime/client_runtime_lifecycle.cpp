@@ -23,12 +23,14 @@
 #include "../hooks/package_trust/package_trust_bypass.h"
 #include "../hooks/polled_input/runtime.h"
 #include "../hooks/retail_log/retail_log_lifecycle.h"
+#include "../hooks/spawn/spawn_runtime.h"
 #include "../hooks/stall_probe/stall_probe.h"
 #include "../hooks/teleport/runtime.h"
 #include "../hooks/world_objects/world_object_registry.h"
 #include "../hooks/world_speed/world_speed.h"
 #include "../movement/movement_settings_store.h"
 #include "../player/player_settings_store.h"
+#include "../spawn/spawn_keybind_store.h"
 #include "../targets/game.h"
 #include "../targets/steam_targets.h"
 #include "../ui/activity/authored_placement_marker.h"
@@ -45,6 +47,7 @@ bool initialize(void* module) noexcept {
 
     // Loaded before the pages register, so each page draws saved values on its first frame.
     movement::initialize(module);
+    spawn::initialize(module);
     player::initialize(module);
     ui::activity::authored_placement_marker::initialize(module);
 
@@ -137,6 +140,7 @@ bool shutdown() noexcept {
     hooks::infinite_ammo::uninstall();
     hooks::inactivity::uninstall();
     hooks::noclip::uninstall();
+    hooks::spawn::uninstall();
     hooks::teleport::uninstall();
     if (!hooks::config_getter::uninstall()) {
         ReleaseSRWLockExclusive(&runtime::g_lock);
@@ -192,6 +196,7 @@ bool shutdown() noexcept {
     // The reverse of the order the stores initialize in.
     ui::activity::authored_placement_marker::shutdown();
     player::shutdown();
+    spawn::shutdown();
     movement::shutdown();
 
     core::log::write(core::log::Channel::client, core::log::Level::info, "ev=shutdown result=ok");

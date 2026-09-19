@@ -236,6 +236,11 @@
     <ClCompile Include="src\client\hooks\egress\winsock\transmission\egress_transmission_replacements.cpp" />
     <ClCompile Include="src\client\hooks\egress\winsock\transmission\egress_datagram_transmission.cpp" />
     <ClCompile Include="src\client\hooks\egress\winsock\transmission\egress_message_transmission.cpp" />
+    <ClCompile Include="src\client\content\entity_names\entity_name_cache.cpp" />
+    <ClCompile Include="src\client\content\entity_names\localized_aliases.cpp" />
+    <ClCompile Include="src\client\hooks\spawn\spawn_runtime.cpp" />
+    <ClCompile Include="src\client\spawn\spawn_keybind_store.cpp" />
+    <ClCompile Include="src\server\ui\spawn\spawn_panel.cpp" />
     <ClCompile Include="src\client\ui\runtime\client_ui_module_runtime.cpp" />
     <ClCompile Include="src\client\ui\movement\movement_panel.cpp" />
     <ClCompile Include="src\client\movement\movement_settings_store.cpp" />
@@ -1265,6 +1270,11 @@
     <ClCompile Remove="vendor\lua\lzio.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\client\content\entity_names\entity_name_cache.h" />
+    <ClInclude Include="src\client\content\entity_names\localized_aliases.h" />
+    <ClInclude Include="src\client\hooks\spawn\spawn_runtime.h" />
+    <ClInclude Include="src\client\spawn\spawn_keybind_store.h" />
+    <ClInclude Include="src\server\ui\spawn\spawn_panel.h" />
     <ClInclude Include="resources\resource.h" />
     <ClInclude Include="src\client\hooks\player_scale\player_scale.h" />
     <ClInclude Include="src\core\logging\log.h" />
@@ -2247,4 +2257,3 @@
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
-
