@@ -184,6 +184,7 @@ Cowisma is built from work created across the Sunrise community.
 | **ReGlitched / Sunrise**                | Entity Spawner                                                                                |
 | **Nyxaraa / Sunrise-Nyxara**            | Community Sunrise features and mission/emote-related work incorporated during AIO development |
 | **WalterGerig / SunriseGearEditor**     | Gear Editor work                                                                              |
+| **xskullhd**                            | Subclass Editor                                                                               |
 | **ltsReaver**                           | Godmode, No Turn Back, FOV, coordinate/fly and world-speed related community work             |
 | **Sunrise contributors**                | Fixes and features that have since been incorporated directly into upstream Sunrise           |
 
