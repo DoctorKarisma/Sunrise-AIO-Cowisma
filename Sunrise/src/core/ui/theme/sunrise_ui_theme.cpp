@@ -60,11 +60,6 @@ constexpr ImVec4 kTransparent{};
 /** Current base theme. Sunrise Original remains the default. */
 Style g_selected = Style::rgb;
 
-/**
- * Optional animation setting.
- * Phase 1 stores the state; ImAnim will consume it in the next integration stage.
- */
-bool g_animated = false;
 
 /** @return A brighter version of the supplied RGB accent. */
 [[nodiscard]] ImVec4 rgb_hovered(const ImVec4& accent) noexcept {
@@ -276,14 +271,5 @@ const char* display_name(Style style) noexcept {
     }
 }
 
-/** @return True when the optional animation layer is enabled. */
-bool animated() noexcept {
-    return g_animated;
-}
-
-/** Enables or disables the optional animation layer. */
-void set_animated(bool enabled) noexcept {
-    g_animated = enabled;
-}
 
 } // namespace sunrise::core::ui::theme

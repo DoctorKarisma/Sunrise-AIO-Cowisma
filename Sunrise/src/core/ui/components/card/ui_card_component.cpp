@@ -48,7 +48,7 @@ constexpr ImGuiChildFlags kChildFlags = ImGuiChildFlags_AlwaysUseWindowPadding;
 /**
  * Starts a padded card and records whether its Dear ImGui child needs an End.
  * @param id Stable non-null Dear ImGui child ID.
- * @param size Final framebuffer size; a zero axis takes the space left.
+ * @param size Final framebuffer size; a zero axis means automatic.
  */
 Scope::Scope(const char* id, const ImVec2& size) noexcept {
     if (id == nullptr || ImGui::GetCurrentContext() == nullptr) {
@@ -70,9 +70,17 @@ Scope::Scope(const char* id, const ImVec2& size) noexcept {
     const ImVec4 border = drawing::blend(style.Colors[ImGuiCol_Border],
                                          style.Colors[ImGuiCol_CheckMark],
                                          hover * kHoverBorderWeight);
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    ImDrawList* const drawList = ImGui::GetWindowDrawList();
     const float cornerRadius = scaling::dpi::pixels(kCornerRadius);
     const float borderThickness = scaling::dpi::pixels(kBorderThickness);
+
+    /*
+     * Keep both parts of the card on the parent's normal draw list.
+     *
+     * The previous foreground-draw-list border stayed above the child scrollbar, but it also
+     * stayed above Dear ImGui popup windows. That made the card edge cut straight through open
+     * combo boxes. Drawing the border here restores normal window/popup ordering.
+     */
     drawList->AddRectFilled(minimum, maximum, ImGui::GetColorU32(fill), cornerRadius);
     drawList->AddRect(minimum,
                       maximum,

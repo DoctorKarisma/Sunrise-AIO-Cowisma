@@ -5,7 +5,7 @@
 
 namespace sunrise::core::ui::theme {
 
-/** Base visual theme. Animation is an independent presentation option. */
+/** Base visual theme. */
 enum class Style : std::uint8_t {
     sunriseOriginal,
     rgb,
@@ -32,14 +32,6 @@ void set_selected(Style style) noexcept;
 /** @return Display name for a base theme. */
 [[nodiscard]] const char* display_name(Style style) noexcept;
 
-/** @return True when the optional animation layer is enabled. */
-[[nodiscard]] bool animated() noexcept;
-
-/**
- * Enables or disables the optional animation layer.
- * ImAnim will consume this setting once that layer is integrated.
- */
-void set_animated(bool enabled) noexcept;
 
 /** @return The current color in the slow animated RGB cycle. */
 [[nodiscard]] ImVec4 animated_border_color() noexcept;

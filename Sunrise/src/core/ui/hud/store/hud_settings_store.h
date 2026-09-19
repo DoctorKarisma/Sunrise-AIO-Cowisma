@@ -29,21 +29,16 @@ void shutdown() noexcept;
  * @param switches Overlay/status keys to load.
  * @param theme Receives the saved theme name when present.
  * @param themeCapacity Capacity of the theme output buffer.
- * @param animated Receives the saved animation switch when present.
  */
-void load(std::span<Switch> switches,
-          char* theme,
-          std::size_t themeCapacity,
-          bool& animated) noexcept;
+void load(std::span<Switch> switches, char* theme, std::size_t themeCapacity) noexcept;
 
 /**
  * Writes the complete HUD settings file.
  *
  * @param switches Every overlay/status key and its state, in table order.
  * @param theme Stable theme storage name.
- * @param animated Animation-layer switch.
  * @return True when every byte reached the file.
  */
-bool save(std::span<const Switch> switches, const char* theme, bool animated) noexcept;
+bool save(std::span<const Switch> switches, const char* theme) noexcept;
 
 } // namespace sunrise::core::ui::hud::store

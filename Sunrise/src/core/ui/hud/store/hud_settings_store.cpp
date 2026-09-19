@@ -23,7 +23,7 @@ namespace {
 constexpr std::wstring_view kFileSuffix = L"\\hud.json";
 
 /**
- * Theme settings add only two small rows to the old switch document. 4096 bytes leaves generous
+ * Theme settings add only one small row to the old switch document. 4096 bytes leaves generous
  * room for future HUD switches without making this runtime file meaningfully larger.
  */
 constexpr std::size_t kFileCapacity = 4096;
@@ -38,9 +38,8 @@ constexpr std::size_t kThemeValueCapacity = 32;
 constexpr char kTrueText[] = "true";
 constexpr char kFalseText[] = "false";
 
-/** Theme and animation keys live beside the existing overlay switches. */
+/** The theme key lives beside the existing overlay switches. */
 constexpr char kThemeKey[] = "theme";
-constexpr char kAnimatedKey[] = "animated";
 
 path::Buffer g_path{};
 bool g_pathResolved{};
@@ -244,10 +243,7 @@ void shutdown() noexcept {
 }
 
 /** Applies saved HUD state over the caller's defaults. */
-void load(std::span<Switch> switches,
-          char* theme,
-          std::size_t themeCapacity,
-          bool& animated) noexcept {
+void load(std::span<Switch> switches, char* theme, std::size_t themeCapacity) noexcept {
     if (!g_pathResolved) {
         return;
     }
@@ -285,11 +281,10 @@ void load(std::span<Switch> switches,
     }
 
     string_for(text, kThemeKey, theme, themeCapacity);
-    bool_for(text, kAnimatedKey, animated);
 }
 
 /** Writes the complete HUD settings file. */
-bool save(std::span<const Switch> switches, const char* theme, bool animated) noexcept {
+bool save(std::span<const Switch> switches, const char* theme) noexcept {
     if (!g_pathResolved || theme == nullptr) {
         return false;
     }
@@ -301,17 +296,11 @@ bool save(std::span<const Switch> switches, const char* theme, bool animated) no
         return false;
     }
 
-    if (!append_string_row(document, offset, kThemeKey, theme, false)) {
+    if (!append_string_row(document, offset, kThemeKey, theme, switches.empty())) {
         report_fail("capacity");
         return false;
     }
 
-    const bool noSwitches = switches.empty();
-
-    if (!append_bool_row(document, offset, kAnimatedKey, animated, noSwitches)) {
-        report_fail("capacity");
-        return false;
-    }
 
     for (std::size_t index = 0; index < switches.size(); ++index) {
         const Switch& entry = switches[index];

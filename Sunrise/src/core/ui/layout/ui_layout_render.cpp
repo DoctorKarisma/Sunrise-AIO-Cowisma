@@ -52,6 +52,8 @@ constexpr float kViewportMargin = 24.0F;
 constexpr float kViewportMarginCount = 2.0F;
 /** 180 pixels caps the narrow module navigation. */
 constexpr float kNavigationWidth = 180.0F;
+/** Four pixels keep the content scrollbar clear of the card's right-hand border. */
+constexpr float kContentScrollbarGutter = 4.0F;
 /** Zero width lets Dear ImGui fill the space left on the current row. */
 constexpr float kAutomaticWidth = 0.0F;
 /** A half-axis pivot centers the window on both viewport axes. */
@@ -405,8 +407,17 @@ bool render(bool visible) noexcept {
         ImGui::SameLine();
 
         {
+            const float contentWidth =
+
+                (std::max)(ImGui::GetContentRegionAvail().x
+
+                               - scaling::dpi::pixels(kContentScrollbarGutter),
+
+                           scaling::dpi::pixels(1.0F));
+
             const components::card::Scope contentCard("##content_card",
-                                                      ImVec2(kAutomaticWidth, panelHeight));
+
+                                                      ImVec2(contentWidth, panelHeight));
 
             if (contentCard.visible()) {
                 draw_content(selected);

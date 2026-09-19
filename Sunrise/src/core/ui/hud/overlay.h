@@ -65,11 +65,6 @@ void set_enabled(StatusLine line, bool on) noexcept;
 /** Selects and saves a base UI theme. */
 void set_selected_theme(theme::Style style) noexcept;
 
-/** @return True while the optional animation layer is enabled. */
-[[nodiscard]] bool animated_theme() noexcept;
-
-/** Enables/disables and saves the optional animation layer. */
-void set_animated_theme(bool enabled) noexcept;
 
 /**
  * Draws every enabled overlay, stacked down the top-left corner. It runs whether the menu is

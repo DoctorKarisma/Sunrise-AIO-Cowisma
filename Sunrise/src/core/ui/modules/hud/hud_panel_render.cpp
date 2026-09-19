@@ -45,17 +45,11 @@ void draw() noexcept {
     }
 
     ImGui::Spacing();
-    components::section::header("Themes",
-                                "Choose the base Sunrise appearance and optional animation.");
+    components::section::header("Themes", "Choose the base Sunrise appearance.");
     ImGui::Spacing();
 
     const theme::Style selectedTheme = ui::hud::selected_theme();
 
-    /*
-     * Keep the theme selector and animation checkbox together on one compact row:
-     *
-     * Theme  [ RGB v ]    [ ] Animated
-     */
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted("Theme");
     ImGui::SameLine();
@@ -82,14 +76,6 @@ void draw() noexcept {
         }
 
         ImGui::EndCombo();
-    }
-
-    ImGui::SameLine();
-
-    bool animated = ui::hud::animated_theme();
-
-    if (ImGui::Checkbox("Animated", &animated)) {
-        ui::hud::set_animated_theme(animated);
     }
 }
 

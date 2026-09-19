@@ -161,7 +161,7 @@ std::array<bool, kStatusLineCount> g_lineEnabled{starting_line_state()};
 
 void save_settings() noexcept {
     const std::array<store::Switch, kSwitchCount> switches = switch_state();
-    (void)store::save(switches, theme_storage_name(), theme::animated());
+    (void)store::save(switches, theme_storage_name());
 }
 
 /**
@@ -212,9 +212,8 @@ void initialize(void* module) noexcept {
     char storedTheme[kThemeStorageCapacity]{};
     (void)std::snprintf(storedTheme, sizeof(storedTheme), "%s", kThemeRgb);
 
-    bool storedAnimated = false;
 
-    store::load(switches, storedTheme, sizeof(storedTheme), storedAnimated);
+    store::load(switches, storedTheme, sizeof(storedTheme));
 
     for (std::size_t index = 0; index < kOverlayCount; ++index) {
         g_enabled[index] = switches[index].on;
@@ -234,7 +233,6 @@ void initialize(void* module) noexcept {
         theme::set_selected(theme::Style::rgb);
     }
 
-    theme::set_animated(storedAnimated);
 }
 
 void shutdown() noexcept {
@@ -288,18 +286,6 @@ void set_selected_theme(theme::Style style) noexcept {
     save_settings();
 }
 
-bool animated_theme() noexcept {
-    return theme::animated();
-}
-
-void set_animated_theme(bool enabled) noexcept {
-    if (theme::animated() == enabled) {
-        return;
-    }
-
-    theme::set_animated(enabled);
-    save_settings();
-}
 
 bool draw(bool interfaceEnabled) noexcept {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
